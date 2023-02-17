@@ -2,16 +2,31 @@
 #   docker build -t mikel-brostrom/yolov5_strongsort_osnet .
 
 # Base image: Nvidia PyTorch https://ngc.nvidia.com/catalog/containers/nvidia:pytorch
-FROM nvcr.io/nvidia/pytorch:22.11-py3
+FROM pytorch/pytorch:latest
 
 # Update image
 RUN apt update
+
+
+# Install linux packages
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt update
+RUN TZ=Etc/UTC apt install -y tzdata
+RUN apt install --no-install-recommends -y gcc git zip curl htop libgl1-mesa-glx libglib2.0-0 libpython3-dev gnupg
+# RUN alias python=python3
+
+# Security updates
+# https://security.snyk.io/vuln/SNYK-UBUNTU1804-OPENSSL-3314796
+RUN apt upgrade --no-install-recommends -y openssl
+
 
 # Install pip packages
 COPY requirements.txt .
 RUN python -m pip install --upgrade pip setuptools wheel
 RUN pip uninstall -y torch torchvision
 RUN pip install --no-cache -r requirements.txt
+RUN pip install --no-cache ultralytics albumentations comet gsutil notebook \
+    coremltools onnx onnx-simplifier onnxruntime openvino-dev>=2022.3
 
 # Create working directory
 RUN mkdir -p /usr/src/app
