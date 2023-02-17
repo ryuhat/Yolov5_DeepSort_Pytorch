@@ -2,31 +2,23 @@
 #   docker build -t mikel-brostrom/yolov5_strongsort_osnet .
 
 # Base image: Nvidia PyTorch https://ngc.nvidia.com/catalog/containers/nvidia:pytorch
-FROM pytorch/pytorch:latest
+# FROM pytorch/pytorch:latest
+# FROM nvidia/cuda:12.0.0-runtime-ubuntu22.04
+
+# build the image and tag it for easier later reference
+#   docker build -t mikel-brostrom/yolov5_strongsort_osnet .
+
+# Base image: Nvidia PyTorch https://ngc.nvidia.com/catalog/containers/nvidia:pytorch
+FROM nvcr.io/nvidia/pytorch:22.11-py3
 
 # Update image
 RUN apt update
-
-
-# Install linux packages
-ENV DEBIAN_FRONTEND noninteractive
-RUN apt update
-RUN TZ=Etc/UTC apt install -y tzdata
-RUN apt install --no-install-recommends -y gcc git zip curl htop libgl1-mesa-glx libglib2.0-0 libpython3-dev gnupg
-# RUN alias python=python3
-
-# Security updates
-# https://security.snyk.io/vuln/SNYK-UBUNTU1804-OPENSSL-3314796
-RUN apt upgrade --no-install-recommends -y openssl
-
 
 # Install pip packages
 COPY requirements.txt .
 RUN python -m pip install --upgrade pip setuptools wheel
 RUN pip uninstall -y torch torchvision
 RUN pip install --no-cache -r requirements.txt
-RUN pip install --no-cache ultralytics albumentations comet gsutil notebook \
-    coremltools onnx onnx-simplifier onnxruntime openvino-dev>=2022.3
 
 # Create working directory
 RUN mkdir -p /usr/src/app
@@ -63,3 +55,36 @@ RUN git clone --recurse-submodules https://github.com/ryuhat/yolov8_tracking /us
 #   - When you are done with the container stop it by:
 #
 #       docker stop <container_id>
+
+
+# # Update image
+# # RUN apt update
+# RUN apt-get update \
+#     && apt-get install --no-install-recommends -y  \
+#         libgl1-mesa-glx libglib2.0-0 python3 python3-pip \
+#     && pip3 install ultralytics \
+#     && rm -rf /var/lib/apt/lists/*
+
+# # Install linux packages
+# ENV DEBIAN_FRONTEND noninteractive
+# RUN apt update
+# RUN TZ=Etc/UTC apt install -y tzdata
+# RUN apt install --no-install-recommends -y gcc git zip curl htop libgl1-mesa-glx libglib2.0-0 libpython3-dev gnupg
+# # RUN alias python=python3
+
+# # Security updates
+# # https://security.snyk.io/vuln/SNYK-UBUNTU1804-OPENSSL-3314796
+# RUN apt upgrade --no-install-recommends -y openssl
+
+
+# # Install pip packages
+# COPY requirements.txt .
+# RUN python -m pip install --upgrade pip setuptools wheel
+# RUN pip uninstall -y torch torchvision
+# RUN pip install --no-cache -r requirements.txt
+# RUN pip install --no-cache ultralytics albumentations comet gsutil notebook \
+#     coremltools onnx onnx-simplifier onnxruntime openvino-dev>=2022.3
+
+# # Create working directory
+# RUN mkdir -p /usr/src/app
+# WORKDIR /usr/src/app
