@@ -4,7 +4,6 @@ def predict_video(model, source, show):
     # Put your predict.py script code here
     # ...
     # return predicted video
-    
     iface = gr.Interface(
         predict_video,
         [

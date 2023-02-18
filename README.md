@@ -11,12 +11,6 @@
   <br>  
   <a href="https://colab.research.google.com/drive/18nIqkBr68TkK8dHdarxTco6svHUJGggY?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
 <a href="https://doi.org/10.5281/zenodo.7629840"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7629840.svg" alt="DOI"></a>
-
-
-    
-
-
-
   </div>
 </div>
 
@@ -227,7 +221,7 @@ The set of hyperparameters leading to the best HOTA result are written to the tr
 
 </details>
 
-## Contact 
+<!-- ## Contact 
 
 For Yolov8 tracking bugs and feature requests please visit [GitHub Issues](https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/issues). 
-For business inquiries or professional support requests please send an email to: yolov5.deepsort.pytorch@gmail.com
+For business inquiries or professional support requests please send an email to: yolov5.deepsort.pytorch@gmail.com -->
