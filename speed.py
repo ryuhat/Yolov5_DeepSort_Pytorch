@@ -303,7 +303,7 @@ def run(
                         fn_sum = 0
                         V, V_average=0, 0
                         v_xy, v_r, v_s = 0, 0, 0
-                        flag = False
+                        outside = False
                         angle = 0
 
                         for jj in range(1, len(pts[id])):
@@ -327,26 +327,16 @@ def run(
                           # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
                           # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
                           fn = ra[3] - rb[3]
-                          
-                          # print(fn)
-                          # if left_a == left_b or right_a == right_b or top_a == top_b or bottom_a == bottom_b:
-                          # flag = False
-                          # @with_goto
-                          # if left_a < 5 or right_a > 1915 or top_a < 5 or bottom_a > 1075:
                           if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
-                              # print(id, left_a, right_a, top_a, bottom_a)
-                              flag = True
-                              # num -= 1
+                              outside = True
                           else:
-                              flag = False
+                              outside = False
 
                               V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
                               v_xy = dxy * 30 * 3.6 / fn
                               v_r = dr * 30 * 3.6 / fn
                               v_s = dR * 30/ fn
-              
                               dR_sum += dR
-
                               fn_sum += fn
 
                               V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
@@ -356,7 +346,7 @@ def run(
                               thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
                               cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
 
-                        num += 1 if not flag else 0
+                        num += 1 if not outside else 0
 
                         V_sum += V_average
                         V_all = V_sum / num if num > 1 else V_sum
@@ -377,7 +367,7 @@ def run(
                                     f.write(('%g ' * 8+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
                                                                 y, fz, n))
 
-                        if save_vid or save_crop or show_vid:  # Add bbox/seg to image
+                        if save_vid or save_crop or show_vid or keypoints:  # Add bbox/seg to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
                             # label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
@@ -391,39 +381,25 @@ def run(
                               else:
                                   label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                   (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
-                            #  <{angle:.1f}>
 
                             else:
                               label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                   (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}px/s ({V:.1f}) <{angle:.1f}>'))
                      
                             
-                            if flag:
+                            if outside:
+                              annotator = Annotator(im0, line_width=1, example=str(names))
                               annotator.box_label(bbox, label=None, color=(255, 20, 2))
                                 # plot_one_box(bboxes, im0, label=None, color=(255, 20, 2), line_thickness=1)
-                            elif V_average > v_th and simple == 0:
+                            # elif V_average > v_th and simple == 0:
+                            elif V_average > 6 and simple == 0:
+                              annotator = Annotator(im0, line_width=3, example=str(names))
                               annotator.box_label(bbox, label, color=(2, 2, 255))
                             else:
+                              annotator = Annotator(im0, line_width=3, example=str(names))
                               annotator.box_label(bbox, label, color=(2, 200, 2))
                         
                             # annotator.box_label(bbox, label, color=color)
-
-                            if simple==0:
-                              if V_all > v_all_th:
-                                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
-                              else:    
-                                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)    
-                                  
-                              cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
-                                  (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
-                              T = (frame_idx + 1) / 30
-                              T2 = strftime("%M:%S", gmtime(T))
-                              # cv2.putText(im0, '{:.0f}s'.format(T),
-                              #     (1750, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)   
-                              cv2.putText(im0, f'{T2}',
-                                  (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
                             
                             if save_trajectories and tracking_method == 'strongsort':
                                 q = output[7]
@@ -432,10 +408,34 @@ def run(
                                 txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
                                 save_one_box(np.array(bbox, dtype=np.int16), imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
                             
+                            if keypoints:
+                                
+                                
+                            
             else:
                 pass
                 #tracker_list[i].tracker.pred_n_update_all_tracks()
-                
+
+          
+            if simple==0 and save_vid:
+              if V_all > v_all_th:
+                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
+              else:    
+                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)
+              cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
+                  (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
+              T = (frame_idx + 1) / 30
+              T2 = strftime("%M:%S", gmtime(T))
+              cv2.putText(im0, f'{T2}',
+                  (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
+
+              t_ms = sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3
+              fps_ms = 1000 / t_ms 
+              cv2.putText(im0, 'FPS: {:.0f}'.format(fps_ms),
+                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), thickness=2)   
+            
             # Stream results
             im0 = annotator.result()
             if show_vid:
@@ -464,9 +464,11 @@ def run(
                 vid_writer[i].write(im0)
 
             prev_frames[i] = curr_frames[i]
-            
+        
+
         # Print total time (preprocessing + inference + NMS + tracking)
-        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")
+        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")  
+
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
