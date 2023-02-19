@@ -38,16 +38,15 @@ from yolov8.ultralytics.yolo.utils.files import increment_path
 from yolov8.ultralytics.yolo.utils.torch_utils import select_device
 from yolov8.ultralytics.yolo.utils.ops import Profile, non_max_suppression, scale_boxes, process_mask, process_mask_native
 from yolov8.ultralytics.yolo.utils.plotting import Annotator, colors, save_one_box
-from yolov8.ultralytics.yolo.utils.plotting import plot_one_box, plot_centroid, rgb, drawAxis, plot_speed_txt, angle_between
-
-from collections import deque
-# from utils.plots import plot_one_box, plot_centroid, rgb, drawAxis, save_one_box, plot_speed_txt, angle_between
 
 from trackers.multi_tracker_zoo import create_tracker
 
-VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv'  # include video suffixes
+from collections import deque
+import time
+from time import strftime
+from time import gmtime
+from yolov8.ultralytics.yolo.utils.plotting import plot_centroid, rgb
 
-M = 90
 @torch.no_grad()
 def run(
         source='0',
@@ -61,7 +60,7 @@ def run(
         max_det=1000,  # maximum detections per image
         device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
         show_vid=False,  # show results
-        save_txt=False,  # save results to *.txt
+        save_txt=True,  # save results to *.txt
         save_conf=False,  # save confidences in --save-txt labels
         save_crop=False,  # save cropped prediction boxes
         save_trajectories=False,  # save trajectories for each track
@@ -75,7 +74,7 @@ def run(
         project=ROOT / 'runs' / 'track',  # save results to project/name
         name='exp',  # save results to project/name
         exist_ok=False,  # existing project/name ok, do not increment
-        line_thickness=2,  # bounding box thickness (pixels)
+        line_thickness=3,  # bounding box thickness (pixels)
         hide_labels=False,  # hide labels
         hide_conf=False,  # hide confidences
         hide_class=False,  # hide IDs
@@ -98,98 +97,89 @@ def run(
         exp_name = yolo_weights.stem
     elif type(yolo_weights) is list and len(yolo_weights) == 1:  # single models after --yolo_weights
         exp_name = Path(yolo_weights[0]).stem
-        yolo_weights = Path(yolo_weights[0])
     else:  # multiple models after --yolo_weights
         exp_name = 'ensemble'
-    exp_name = name if name else exp_name + "_" + strong_sort_weights.stem
+    exp_name = name if name else exp_name + "_" + reid_weights.stem
     save_dir = increment_path(Path(project) / exp_name, exist_ok=exist_ok)  # increment run
-    save_dir = Path(save_dir)
     (save_dir / 'tracks' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
     # Load model
     device = select_device(device)
-    
-    WEIGHTS.mkdir(parents=True, exist_ok=True)
-    model = attempt_load(Path(yolo_weights), map_location=device)  # load FP32 model
-    names, = model.names,
-    stride = model.stride.max()  # model stride
-    imgsz = check_img_size(imgsz[0], s=stride.cpu().numpy())  # check image size
+    is_seg = '-seg' in str(yolo_weights)
+    model = AutoBackend(yolo_weights, device=device, dnn=dnn, fp16=half)
+    stride, names, pt = model.stride, model.names, model.pt
+    imgsz = check_imgsz(imgsz, stride=stride)  # check image size
 
     # Dataloader
+    bs = 1
     if webcam:
-        show_vid = check_imshow()
-        cudnn.benchmark = True  # set True to speed up constant image size inference
-        dataset = LoadStreams(source, img_size=imgsz, stride=stride.cpu().numpy())
-        nr_sources = 1
+        show_vid = check_imshow(warn=True)
+        dataset = LoadStreams(
+            source,
+            imgsz=imgsz,
+            stride=stride,
+            auto=pt,
+            transforms=getattr(model.model, 'transforms', None),
+            vid_stride=vid_stride
+        )
+        bs = len(dataset)
     else:
-        dataset = LoadImages(source, img_size=imgsz, stride=stride)
-        nr_sources = 1
-    vid_path, vid_writer, txt_path = [None] * nr_sources, [None] * nr_sources, [None] * nr_sources
-
-    # initialize StrongSORT
-    cfg = get_config()
-    cfg.merge_from_file(opt.config_strongsort)
+        dataset = LoadImages(
+            source,
+            imgsz=imgsz,
+            stride=stride,
+            auto=pt,
+            transforms=getattr(model.model, 'transforms', None),
+            vid_stride=vid_stride
+        )
+    vid_path, vid_writer, txt_path = [None] * bs, [None] * bs, [None] * bs
+    model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
 
     # Create as many strong sort instances as there are video sources
-    strongsort_list = []
-    for i in range(nr_sources):
-        strongsort_list.append(
-            StrongSORT(
-                strong_sort_weights,
-                device,
-                half,
-                max_dist=cfg.STRONGSORT.MAX_DIST,
-                max_iou_distance=cfg.STRONGSORT.MAX_IOU_DISTANCE,
-                max_age=cfg.STRONGSORT.MAX_AGE,
-                n_init=cfg.STRONGSORT.N_INIT,
-                nn_budget=cfg.STRONGSORT.NN_BUDGET,
-                mc_lambda=cfg.STRONGSORT.MC_LAMBDA,
-                ema_alpha=cfg.STRONGSORT.EMA_ALPHA,
-
-            )
-        )
-        strongsort_list[i].model.warmup()
-    outputs = [None] * nr_sources
-    prev_outputs = [None] * nr_sources
-        
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+    tracker_list = []
+    for i in range(bs):
+        tracker = create_tracker(tracking_method, tracking_config, reid_weights, device, half)
+        tracker_list.append(tracker, )
+        if hasattr(tracker_list[i], 'model'):
+            if hasattr(tracker_list[i].model, 'warmup'):
+                tracker_list[i].model.warmup()
+    outputs = [None] * bs
 
     # Run tracking
-    dt, seen = [0.0, 0.0, 0.0, 0.0], 0
-    curr_frames, prev_frames = [None] * nr_sources, [None] * nr_sources
-    # x_before, y_before, z_before = 0, 0, 0
+    M=90
     pts = [deque(maxlen=M) for _ in range(9999)]
     fn = 0
     start = time.perf_counter()
-    
-    for frame_idx, (path, im, im0s, vid_cap) in enumerate(dataset):
-        HEIGHT, WIDTH = im0s.shape[0], im0s.shape[1]
-        s = ''
-        t1 = time_synchronized()
-        im = torch.from_numpy(im).to(device)
-        im = im.half() if half else im.float()  # uint8 to fp16/32
-        im /= 255.0  # 0 - 255 to 0.0 - 1.0
-        if len(im.shape) == 3:
-            im = im[None]  # expand for batch dim
-        t2 = time_synchronized()
-        dt[0] += t2 - t1
-        
-        # print(im0s.shape)
+    #model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
+    seen, windows, dt = 0, [], (Profile(), Profile(), Profile(), Profile())
+    curr_frames, prev_frames = [None] * bs, [None] * bs
+    for frame_idx, batch in enumerate(dataset):
+        path, im, im0s, vid_cap, s = batch
+        visualize = increment_path(save_dir / Path(path[0]).stem, mkdir=True) if visualize else False
+        with dt[0]:
+            im = torch.from_numpy(im).to(device)
+            im = im.half() if half else im.float()  # uint8 to fp16/32
+            im /= 255.0  # 0 - 255 to 0.0 - 1.0
+            if len(im.shape) == 3:
+                im = im[None]  # expand for batch dim
 
         # Inference
-        visualize = increment_path(save_dir / Path(path[0]).stem, mkdir=True) if visualize else False
-        pred = model(im)
-        t3 = time_synchronized()
-        dt[1] += t3 - t2
+        with dt[1]:
+            preds = model(im, augment=augment, visualize=visualize)
 
         # Apply NMS
-        pred = non_max_suppression(pred[0], conf_thres, iou_thres, classes, agnostic_nms)
-        dt[2] += time_synchronized() - t3
-
+        with dt[2]:
+            if is_seg:
+                masks = []
+                p = non_max_suppression(preds[0], conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det, nm=32)
+                proto = preds[1][-1]
+            else:
+                p = non_max_suppression(preds, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+            
         # Process detections
-        for i, det in enumerate(pred):  # detections per image
+        for i, det in enumerate(p):  # detections per image
             seen += 1
-            if webcam:  # nr_sources >= 1
+            if webcam:  # bs >= 1
                 p, im0, _ = path[i], im0s[i].copy(), dataset.count
                 p = Path(p)  # to Path
                 s += f'{i}: '
@@ -206,43 +196,41 @@ def run(
                 else:
                     txt_file_name = p.parent.name  # get folder name containing current img
                     save_path = str(save_dir / p.parent.name)  # im.jpg, vid.mp4, ...
-
             curr_frames[i] = im0
 
             txt_path = str(save_dir / 'tracks' / txt_file_name)  # im.txt
-            txt2_path = str(save_dir / 'tracks' / 'speed')  # im.txt
-            
             s += '%gx%g ' % im.shape[2:]  # print string
             imc = im0.copy() if save_crop else im0  # for save_crop
-            
-            fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            
-            cv2.putText(im0, 'FPS: {:.0f}'.format(fps),
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), thickness=2)     
 
-            if cfg.STRONGSORT.ECC:  # camera motion compensation
-                strongsort_list[i].tracker.camera_update(prev_frames[i], curr_frames[i])
+            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            
+            if hasattr(tracker_list[i], 'tracker') and hasattr(tracker_list[i].tracker, 'camera_update'):
+                if prev_frames[i] is not None and curr_frames[i] is not None:  # camera motion compensation
+                    tracker_list[i].tracker.camera_update(prev_frames[i], curr_frames[i])
 
             if det is not None and len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
+                if is_seg:
+                    shape = im0.shape
+                    # scale bbox first the crop masks
+                    if retina_masks:
+                        det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], shape).round()  # rescale boxes to im0 size
+                        masks.append(process_mask_native(proto[i], det[:, 6:], det[:, :4], im0.shape[:2]))  # HWC
+                    else:
+                        masks.append(process_mask(proto[i], det[:, 6:], det[:, :4], im.shape[2:], upsample=True))  # HWC
+                        det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], shape).round()  # rescale boxes to im0 size
+                else:
+                    det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()  # rescale boxes to im0 size
 
                 # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
+                for c in det[:, 5].unique():
+                    n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                xywhs = xyxy2xywh(det[:, 0:4])
-                confs = det[:, 4]
-                clss = det[:, 5]
-
                 # pass detections to strongsort
-                t4 = time_synchronized()
-                outputs[i] = strongsort_list[i].update(xywhs.cpu(), confs.cpu(), clss.cpu(), im0)
-                t5 = time_synchronized()
-                dt[3] += t5 - t4
-            
-                # draw boxes for visualization
+                with dt[3]:
+                    outputs[i] = tracker_list[i].update(det.cpu(), im0)
+
+                
                 num = 0
                 V_sum, V_all, V_a = 0, 0, 0
                 angle = 0
@@ -252,15 +240,31 @@ def run(
                 v_th = 5.2 if M==50 else 8
 
                 v_all_th = 5.2 if scale else 250
+                
+                # draw boxes for visualization
                 if len(outputs[i]) > 0:
-                    for j, (output, conf) in enumerate(zip(outputs[i], confs)):
-
-                        bboxes = output[0:4]
+                    
+                    if is_seg:
+                        # Mask plotting
+                        annotator.masks(
+                            masks[i],
+                            colors=[colors(x, True) for x in det[:, 5]],
+                            im_gpu=torch.as_tensor(im0, dtype=torch.float16).to(device).permute(2, 0, 1).flip(0).contiguous() /
+                            255 if retina_masks else im[i]
+                        )
+                    
+                    for j, (output) in enumerate(outputs[i]):
+                        
+                        bbox = output[0:4]
+                        id = output[4]
+                        cls = output[5]
+                        conf = output[6]
+                        # to MOT format
                         bbox_left = output[0]
                         bbox_top = output[1]
                         bbox_w = output[2] - output[0]
                         bbox_h = output[3] - output[1]
-                        id = int(output[4])
+
                         L = 1.24
                         W, H = 1.2, 0.35
                         k = 12960
@@ -268,12 +272,7 @@ def run(
 
                         depth_coef = 1
                         distance_coef = 1
-                        # bias = 0.65
-                        
-                        # print(f'{id}: {angle}')
-                        # new_h = int(w*abs(np.sin(np.radians(angle))) + h*abs(np.cos(np.radians(angle))))
-                        # new_w = int(h*abs(np.sin(np.radians(angle))) + w*abs(np.cos(np.radians(angle))))             
-                        
+                      
                         x = bbox_left + bbox_w/2
                         y = bbox_top + bbox_h/2
                         l = np.sqrt(bbox_w**2 + bbox_h**2)
@@ -293,12 +292,9 @@ def run(
                             # v_th = 1000
                         
                         z = k/l
-                        
-                        cls = output[5]
-                        # center = [int(cx), int(cy)]
+
                         centers = [int(x), int(y), z, frame_idx]
-                        # centers = [int(x), int(y), z, frame_idx, bbox_left, bbox_right, bbox_top, bbox_bottom]
-                        # print(z)
+                  
                         pts[id].append(centers)
                         cv2.circle(im0, centers[:2], 1, (0,255,0), 2)
                         # print(pts[id])
@@ -309,102 +305,70 @@ def run(
                         v_xy, v_r, v_s = 0, 0, 0
                         flag = False
                         angle = 0
-                        # V_max = 10
+
                         for jj in range(1, len(pts[id])):
-                            if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
-                                continue
-                            # rf = pts[id][jj-5] # -5
-                            # rl = pts[id][-1] # last
-                            ra, rb =  pts[id][jj], pts[id][jj-1] # after and before 
-                            # ra = # after
-                            dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
-                            # left_a, left_b = ra[4], rb[4]
-                            # right_a, right_b = ra[5], rb[5]
-                            # top_a, top_b = ra[6], rb[6]
-                            # bottom_a, bottom_b = ra[7], rb[7]
-                            
-                            angle = angle_between((rb[0], rb[1]), (1, 0)) 
-                            # angle = angle_between((1, 0), (rb[0], rb[1])) 
-                            # angle = angle_between((ra[0], ra[1]), (rb[0], rb[1])) 
-                            # angle = angle_between((ra[0], ra[0]), (rb[0], rb[0])) 
-                            # print(f'{id}: {angle}')
-                            
-                            dxy = np.sqrt(dx**2+dy**2)
-                            dr = np.sqrt(dx**2+dy**2+dz**2)
-                            # dR = dr * ra[3] *18
-                            dX, dY, dZ = sx*dx, sy*dy, sz*dz
-                            # print(f"dR=({dX}, {dY}, {dZ})")
+                          if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
+                              continue
+                          # rf = pts[id][jj-5] # -5
+                          # rl = pts[id][-1] # last
+                          ra, rb =  pts[id][jj], pts[id][jj-1] # after and before 
+                          # ra = # after
+                          dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
+                          
+                          # angle = angle_between((rb[0], rb[1]), (1, 0)) 
+                          
+                          dxy = np.sqrt(dx**2+dy**2)
+                          dr = np.sqrt(dx**2+dy**2+dz**2)
+                          # dR = dr * ra[3] *18
+                          dX, dY, dZ = sx*dx, sy*dy, sz*dz
+                          # print(f"dR=({dX}, {dY}, {dZ})")
 
-                            dR = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
-                            # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
-                            # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
-                            fn = ra[3] - rb[3]
-                            
-                            # print(fn)
-                            # if left_a == left_b or right_a == right_b or top_a == top_b or bottom_a == bottom_b:
-                            # flag = False
-                            # @with_goto
-                            # if left_a < 5 or right_a > 1915 or top_a < 5 or bottom_a > 1075:
-                            if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
-                                # print(id, left_a, right_a, top_a, bottom_a)
-                                flag = True
-                                # num -= 1
-                            else:
-                                flag = False
+                          dR = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
+                          # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
+                          # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
+                          fn = ra[3] - rb[3]
+                          
+                          # print(fn)
+                          # if left_a == left_b or right_a == right_b or top_a == top_b or bottom_a == bottom_b:
+                          # flag = False
+                          # @with_goto
+                          # if left_a < 5 or right_a > 1915 or top_a < 5 or bottom_a > 1075:
+                          if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
+                              # print(id, left_a, right_a, top_a, bottom_a)
+                              flag = True
+                              # num -= 1
+                          else:
+                              flag = False
 
-                                V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
-                                v_xy = dxy * 30 * 3.6 / fn
-                                v_r = dr * 30 * 3.6 / fn
-                                v_s = dR * 30/ fn
-                
-                                dR_sum += dR
+                              V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
+                              v_xy = dxy * 30 * 3.6 / fn
+                              v_r = dr * 30 * 3.6 / fn
+                              v_s = dR * 30/ fn
+              
+                              dR_sum += dR
 
-                                fn_sum += fn
+                              fn_sum += fn
 
-                                V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
-                                
-                                c_color = rgb(0, 12, V) if M==50 else rgb(0,20,V)
+                              V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
+                              
+                              c_color = rgb(0, 12, V) if M==50 else rgb(0,20,V)
 
-                                thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
-                                cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
+                              thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
+                              cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
 
                         num += 1 if not flag else 0
 
                         V_sum += V_average
                         V_all = V_sum / num if num > 1 else V_sum
                         V_a = V / num if num > 1 else V
-                    
-                        if scale: 
-                            if simple: 
-                                label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
-                            else:
-                                label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
-                            #  <{angle:.1f}>
 
-                        else:
-                            label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}px/s ({V:.1f}) <{angle:.1f}>'))
-                                # (f'{id} {conf:.2f}' if hide_class else f'{id} {V:.1f}km/h ({x}, {y}, {z:.1f}) {aspect:.1f} {La:.1f}'))
-                            # if pts[id][jj][:2]:
-                        # if V_average > 42:
-                        if flag:
-                            plot_one_box(bboxes, im0, label=None, color=(255, 20, 2), line_thickness=1)
-                        elif V_average > v_th and simple == 0:
-                            plot_one_box(bboxes, im0, label=label, color=(2, 2, 255), line_thickness=3)
-                        else:
-                            plot_one_box(bboxes, im0, label=label, color=(2, 200, 2), line_thickness=3)
-                        
 
-                        if save_txt and not flag:
-                            # to MOT format
-                            bbox_left = output[0]
-                            bbox_top = output[1]
-                            bbox_w = output[2] - output[0]
-                            bbox_h = output[3] - output[1]
-                            fz = round(z, 1)
+                        if save_txt:
                             # Write MOT compliant results to file
+                            # with open(txt_path + '.txt', 'a') as f:
+                            #     f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
+                            #                                    bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
+                            fz = round(z, 1)
                             with open(txt_path + '.txt', 'a') as f:
                                 if ablation:
                                     f.write(('%g ' * 12+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
@@ -413,52 +377,75 @@ def run(
                                     f.write(('%g ' * 8+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
                                                                 y, fz, n))
 
-                                # f.write(('%g ' * 5 + '\n') % (frame_idx + 1, id, x,  # MOT format
-                                #                             y, fz))
-                                # f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                                #                                bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
-
-
-                        if save_vid or save_crop or show_vid:  # Add bbox to image
+                        if save_vid or save_crop or show_vid:  # Add bbox/seg to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
+                            # label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                            #     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
+                            color = colors(c, True)
+
+                            if scale: 
+                              if simple: 
+                                  label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
+                              else:
+                                  label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
+                            #  <{angle:.1f}>
+
+                            else:
+                              label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}px/s ({V:.1f}) <{angle:.1f}>'))
+                     
+                            
+                            if flag:
+                              annotator.box_label(bbox, label=None, color=(255, 20, 2))
+                                # plot_one_box(bboxes, im0, label=None, color=(255, 20, 2), line_thickness=1)
+                            elif V_average > v_th and simple == 0:
+                              annotator.box_label(bbox, label, color=(2, 2, 255))
+                            else:
+                              annotator.box_label(bbox, label, color=(2, 200, 2))
+                        
+                            # annotator.box_label(bbox, label, color=color)
+
+                            if simple==0:
+                              if V_all > v_all_th:
+                                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
+                              else:    
+                                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)    
+                                  
+                              cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
+                                  (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
+                              T = (frame_idx + 1) / 30
+                              T2 = strftime("%M:%S", gmtime(T))
+                              # cv2.putText(im0, '{:.0f}s'.format(T),
+                              #     (1750, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)   
+                              cv2.putText(im0, f'{T2}',
+                                  (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
+                            
+                            if save_trajectories and tracking_method == 'strongsort':
+                                q = output[7]
+                                tracker_list[i].trajectory(im0, q, color=color)
                             if save_crop:
                                 txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
-                                save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
-                        # label .end
-                # V_average 
-                print(f'{s}Done. YOLO:({t3 - t2:.3f}s), StrongSORT:({t5 - t4:.3f}s), speed:({V_all:.1f}), num:({num})')
-                # print(f'<<{V_all:.1f}>>')
-                if simple==0:
-                    if V_all > v_all_th:
-                        cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                            (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
-                    else:    
-                        cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                            (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)    
-                        
-                    cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
-                        (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
-                    T = (frame_idx + 1) / 30
-                    T2 = strftime("%M:%S", gmtime(T))
-                    # cv2.putText(im0, '{:.0f}s'.format(T),
-                    #     (1750, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)   
-                    cv2.putText(im0, f'{T2}',
-                        (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
-                
-                if save_txt:
-                    if simple ==0:
-                        with open(txt2_path + '.txt', 'a') as f:
-                                    f.write(('%g ' * 4 + '\n') % (n, T, V_a, V_all))
-                                
+                                save_one_box(np.array(bbox, dtype=np.int16), imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                            
             else:
-                strongsort_list[i].increment_ages()
-                print('No detections')
-
+                pass
+                #tracker_list[i].tracker.pred_n_update_all_tracks()
+                
             # Stream results
+            im0 = annotator.result()
             if show_vid:
+                if platform.system() == 'Linux' and p not in windows:
+                    windows.append(p)
+                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
+                    cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
                 cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
+                if cv2.waitKey(1) == ord('q'):  # 1 millisecond
+                    exit()
 
             # Save results (image with detections)
             if save_vid:
@@ -470,7 +457,6 @@ def run(
                         fps = vid_cap.get(cv2.CAP_PROP_FPS)
                         w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                         h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        # print("fps={fps}")      
                     else:  # stream
                         fps, w, h = 30, im0.shape[1], im0.shape[0]
                     save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
@@ -478,29 +464,29 @@ def run(
                 vid_writer[i].write(im0)
 
             prev_frames[i] = curr_frames[i]
-            prev_outputs[i] = outputs[i]
+            
+        # Print total time (preprocessing + inference + NMS + tracking)
+        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")
 
     # Print results
-    t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
-    print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms strong sort update per image at shape {(1, 3, imgsz, imgsz)}' % t)
+    t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
+    LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms {tracking_method} update per image at shape {(1, 3, *imgsz)}' % t)
     if save_txt or save_vid:
-        s = f"\n{len(list(save_dir.glob('tracks/*.txt')))} tracks saved to {save_dir / 'tracks'}" if save_txt else ''
-        print(f"Results saved to {colorstr('bold', save_dir)}{s}")
+        s = f"\n{len(list((save_dir / 'tracks').glob('*.txt')))} tracks saved to {save_dir / 'tracks'}" if save_txt else ''
+        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
         end = time.perf_counter()
         dt = (end-start)/60
-        print(f'<<{dt:.2f} mins>>')
+        LOGGER.info(f'({dt:.2f} mins)')
     if update:
         strip_optimizer(yolo_weights)  # update model (to fix SourceChangeWarning)
 
-# save_dir = increment_path(Path(project) / exp_name, exist_ok=exist_ok)  # increment run
-# save_dir = Path(save_dir)
-   
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo-weights', nargs='+', type=str, default=WEIGHTS / 'yolov7.pt', help='model.pt path(s)')
-    parser.add_argument('--strong-sort-weights', type=str, default=WEIGHTS / 'osnet_x0_25_msmt17.pt')
-    parser.add_argument('--config-strongsort', type=str, default='strong_sort/configs/strong_sort.yaml')
+    parser.add_argument('--yolo-weights', nargs='+', type=Path, default=WEIGHTS / 'yolov8s-seg.pt', help='model.pt path(s)')
+    parser.add_argument('--reid-weights', type=Path, default=WEIGHTS / 'osnet_x0_25_msmt17.pt')
+    parser.add_argument('--tracking-method', type=str, default='bytetrack', help='strongsort, ocsort, bytetrack')
+    parser.add_argument('--tracking-config', type=Path, default=None)
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')
@@ -509,9 +495,9 @@ def parse_opt():
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
-    # parser.add_argument('--save-3d', action='store_true', help='save results to *.txt')
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
     parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
+    parser.add_argument('--save-trajectories', action='store_true', help='save trajectories for each track')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
     parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
     # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
@@ -520,20 +506,21 @@ def parse_opt():
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--visualize', action='store_true', help='visualize features')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--project', default=ROOT / 'runs/track', help='save results to project/name')
+    parser.add_argument('--project', default=ROOT / 'runs' / 'track', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
-    parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
+    parser.add_argument('--line-thickness', default=2, type=int, help='bounding box thickness (pixels)')
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--hide-class', default=False, action='store_true', help='hide IDs')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
-    
-    # parser.add_argument('--scale', default=False, action='store_true', help='hide labels')
+    parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
+    parser.add_argument('--retina-masks', action='store_true', help='whether to plot masks in native resolution')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
-
+    opt.tracking_config = ROOT / 'trackers' / opt.tracking_method / 'configs' / (opt.tracking_method + '.yaml')
+    print_args(vars(opt))
     return opt
 
 
