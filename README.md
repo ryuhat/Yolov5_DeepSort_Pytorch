@@ -1,5 +1,12 @@
 # Real-time multi-object tracking and segmentation using Yolov8
 
+## Speed Estimation (Velocity Estimation)
+
+```bash
+$ python speed.py --yolo-weights yolov8n.pt     # bboxes only
+                                 yolov8n-seg.pt  # bboxes + segmentation masks
+```
+
 
 <div align="center">
   <p>
