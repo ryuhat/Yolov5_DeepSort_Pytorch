@@ -7,6 +7,10 @@ $ python speed.py --yolo-weights yolov8n.pt     # bboxes only
                                  yolov8n-seg.pt  # bboxes + segmentation masks
 ```
 
+## Docker
+```bash
+docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v J:\\:/usr/src/app yolov8tracking
+```
 
 <div align="center">
   <p>
