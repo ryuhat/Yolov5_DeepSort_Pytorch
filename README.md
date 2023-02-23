@@ -3,14 +3,23 @@
 ## Speed Estimation (Velocity Estimation)
 
 ```bash
-$ python speed.py --yolo-weights yolov8n.pt     # bboxes only
+python speed.py --yolo-weights yolov8n.pt     # bboxes only
                                  yolov8n-seg.pt  # bboxes + segmentation masks
+```
+example usage
+```bash
+python speed.py --yolo-weights yolov8n.pt --source ./videos/733.m4v --save-vid --save-txt
 ```
 
 ## Docker
 ```bash
 docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v J:\\:/usr/src/app yolov8tracking
 ```
+or
+```bash
+docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it -v $(pwd):/usr/src/app yolov8tracking
+```
+
 
 <div align="center">
   <p>

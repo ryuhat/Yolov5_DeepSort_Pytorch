@@ -25,3 +25,6 @@ val_utils/
 *.html
 
 *.ipynb
+
+venv/
+videos/

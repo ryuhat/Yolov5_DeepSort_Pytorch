@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: original_ubuntu
+    volumes:
+      - ./:/usr/src/app
+    # command:  --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -it
+
+
+
+# version: "3.8"
+
+# services:
+#   main:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: original_ubuntu
+#     volumes:
+#       - ./:/usr/src/app
+#     command: ["--gpus", "all", "--ipc=host", "--ulimit", "memlock=-1", "--ulimit", "stack=67108864", "-it"]
+
+
+
+# version: "3"
+
+# services:
+#   main:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: original_ubuntu
+#     volumes:
+#       - ./:/usr/src/app
