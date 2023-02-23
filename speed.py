@@ -144,9 +144,13 @@ def run(
             if hasattr(tracker_list[i].model, 'warmup'):
                 tracker_list[i].model.warmup()
     outputs = [None] * bs
+    
+    import yaml
 
+    with open('parameters.yaml', 'r') as file:
+        parameters = yaml.safe_load(file)
     # Run tracking
-    M=90
+    M = parameters['M']
     pts = [deque(maxlen=M) for _ in range(9999)]
     fn = 0
     start = time.perf_counter()
@@ -230,7 +234,6 @@ def run(
                 with dt[3]:
                     outputs[i] = tracker_list[i].update(det.cpu(), im0)
 
-                
                 num = 0
                 V_sum, V_all, V_a = 0, 0, 0
                 angle = 0
@@ -265,10 +268,16 @@ def run(
                         bbox_w = output[2] - output[0]
                         bbox_h = output[3] - output[1]
 
-                        L = 1.24
-                        W, H = 1.2, 0.35
-                        k = 12960
-                        ks = 0.000020
+                        # L = 1.24
+                        # W, H = 1.2, 0.35
+                        # k = 12960
+                        # ks = 0.000020
+
+                        L = parameters['L']
+                        W = parameters['W']
+                        H = parameters['H']
+                        k = parameters['k']
+                        ks = parameters['ks']
 
                         depth_coef = 1
                         distance_coef = 1
@@ -288,6 +297,7 @@ def run(
                             sz = ks / np.sqrt(sx**2+sy**2)*depth_coef
                             # v_th =5.2
                         else:
+                            # sx, sy, sz = 0.03, 0.03, 0.03
                             sx, sy, sz = 1, 1, 1
                             # v_th = 1000
                         
@@ -367,7 +377,7 @@ def run(
                                     f.write(('%g ' * 8+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
                                                                 y, fz, n))
 
-                        if save_vid or save_crop or show_vid or keypoints:  # Add bbox/seg to image
+                        if save_vid or save_crop or show_vid:  # Add bbox/seg to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
                             # label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
@@ -470,6 +480,7 @@ def run(
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
+    # t = tuple(x.t / seen * 1E3 if seen > 0 else 0 for x in dt)
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms {tracking_method} update per image at shape {(1, 3, *imgsz)}' % t)
     if save_txt or save_vid:
         s = f"\n{len(list((save_dir / 'tracks').glob('*.txt')))} tracks saved to {save_dir / 'tracks'}" if save_txt else ''

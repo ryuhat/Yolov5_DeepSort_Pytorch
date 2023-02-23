@@ -7,24 +7,71 @@ def detect(input_video, weights_path="./yolov8/runs/detect/train15/weights/best.
     command = f"python speed.py --source {input_video.name} --yolo-weights {weights_path} --save-vid {output_video} --save-txt"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     output, error = process.communicate()
-    return output_video
+
+    with open(output_video, 'rb') as f:
+        output_data = f.read()
+
+    return output_data
 
 def main(args):
     input_video = gr.inputs.Video(type="file", label="Input video")
     weights_path = gr.inputs.Textbox(label="Weights path (YOLOv8)", default="./yolov8/runs/detect/train15/weights/best.pt")
     output_video = gr.outputs.Video(label="Output video")
 
+    examples = [
+        {"input_video": {"data": "./data/733.m4v"}},
+        {"input_video": {"data": "/content/drive/MyDrive/yolov8_tracking/videos/733.m4v"}}
+    ]
+
     if args.share:
-        iface = gr.Interface(detect, [input_video, weights_path], output_video, title="YOLOv8 StrongSORT Velocity Estimation").launch(share=True)
+        iface = gr.Interface(detect, [input_video, weights_path], output_video, title="YOLOv8 StrongSORT Velocity Estimation",  examples=examples).launch(share=True)
     else:
         iface = gr.Interface(detect, [input_video, weights_path], output_video, title="YOLOv8 StrongSORT Velocity Estimation")
-    iface.launch()
+        iface.launch()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--share", action="store_true", help="Enable sharing of the interface")
     args = parser.parse_args()
     main(args)
+
+
+
+
+# import argparse
+# import gradio as gr
+# import subprocess
+
+# def detect(input_video, weights_path="./yolov8/runs/detect/train15/weights/best.pt"):
+#     output_video = "output.mp4"
+#     command = f"python speed.py --source {input_video.name} --yolo-weights {weights_path} --save-vid {output_video} --save-txt"
+#     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+#     output, error = process.communicate()
+#     return output_video
+
+# def main(args):
+#     input_video = gr.inputs.Video(type="file", label="Input video")
+#     weights_path = gr.inputs.Textbox(label="Weights path (YOLOv8)", default="./yolov8/runs/detect/train15/weights/best.pt")
+#     output_video = gr.outputs.Video(label="Output video")
+
+#     examples = [
+#         {"input_video": {"data": "./data/733.m4v"}},
+#         {"input_video": {"data": "/content/drive/MyDrive/yolov8_tracking/videos/733.m4v"}}
+#     ]
+
+#     if args.share:
+#         iface = gr.Interface(detect, [input_video, weights_path], output_video, title="YOLOv8 StrongSORT Velocity Estimation",  examples=examples).launch(share=True)
+#     else:
+#         iface = gr.Interface(detect, [input_video, weights_path], output_video, title="YOLOv8 StrongSORT Velocity Estimation")
+#         iface.launch()
+
+
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--share", action="store_true", help="Enable sharing of the interface")
+#     args = parser.parse_args()
+#     main(args)
 
 
 

@@ -10,6 +10,10 @@ example usage
 ```bash
 python speed.py --yolo-weights yolov8n.pt --source ./videos/733.m4v --save-vid --save-txt
 ```
+```bash
+python speed.py --yolo-weights ./yolov8/runs/detect/train15/weights/best.pt --source ./videos/733.m4v --save-vid --save-txt
+```
+
 
 ## Docker
 ```bash
