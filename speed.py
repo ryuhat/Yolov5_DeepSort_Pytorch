@@ -153,6 +153,10 @@ def run(
     M = parameters['M']
     pts = [deque(maxlen=M) for _ in range(9999)]
     fn = 0
+    simple = 0
+    V_all=0
+    num=0
+    
     start = time.perf_counter()
     #model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile(), Profile())
