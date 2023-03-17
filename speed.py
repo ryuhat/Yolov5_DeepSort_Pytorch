@@ -327,6 +327,7 @@ def run(
                         angle = 0
                         dx_sum = 0
                         dy_sum = 0
+                        vec_len = 10
 
                         for jj in range(1, len(pts[id])):
                           if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
@@ -380,14 +381,11 @@ def run(
                             thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
                             cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
 
-                            dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
-                            dx_sum += dX
-                            dy_sum += dY
-                            
-                        # for jj in range(1, len(pts[id])):
-                        #     dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
-                        #     dx_sum += dX
-                        #     dy_sum += dY
+
+                            if jj >= len(pts[id]) - vec_len:
+                                dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                                dx_sum += dX
+                                dy_sum += dY
 
                             # # 現在と前回の座標から進行方向ベクトルを作成する
                             # dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
@@ -422,8 +420,8 @@ def run(
                         V_all = V_sum / num if num > 1 else V_sum
                         V_a = V / num if num > 1 else V
 
-                        dx_mean = dx_sum / len(pts[id])
-                        dy_mean = dy_sum / len(pts[id])
+                        dx_mean = dx_sum / vec_len
+                        dy_mean = dy_sum / vec_len
                         # dx_mean = dx_sum / 50
                         # dy_mean = dy_sum / 50
 
@@ -549,10 +547,12 @@ def run(
 
             prev_frames[i] = curr_frames[i]
         
-
-        # Print total time (preprocessing + inference + NMS + tracking)
-        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")  
-
+        if V_all > v_all_th - 1.1:
+            # Print total time (preprocessing + inference + NMS + tracking)
+            LOGGER.warning(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, \033[31mspeed:({V_all:.1f})\033[0m, num:({num})")  
+        else:
+            # Print total time (preprocessing + inference + NMS)
+            LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
@@ -566,6 +566,7 @@ def run(
         LOGGER.info(f'({dt:.2f} mins)')
     if update:
         strip_optimizer(yolo_weights)  # update model (to fix SourceChangeWarning)
+        
 
 
 def parse_opt():
