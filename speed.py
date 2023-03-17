@@ -325,6 +325,8 @@ def run(
                         v_xy, v_r, v_s = 0, 0, 0
                         outside = False
                         angle = 0
+                        dx_sum = 0
+                        dy_sum = 0
 
                         for jj in range(1, len(pts[id])):
                           if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
@@ -334,6 +336,19 @@ def run(
                           ra, rb =  pts[id][jj], pts[id][jj-1] # after and before 
                           # ra = # after
                           dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
+
+                          # draw arrow
+                        #   distance = np.sqrt(dx**2 + dy**2 + dz**2)
+                        #   direction_vector = np.array([dx, dy, dz]) / distance
+                        #   start_point = (int(ra[0]), int(ra[1]), int(ra[2]))
+                        #   end_point = (int(ra[0] + direction_vector[0]), int(ra[1] + direction_vector[1]), int(ra[2] + direction_vector[2]))
+                        #   cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0), 2, tipLength=0.1)
+                          
+                        #   distance = np.sqrt(dx**2 + dy**2)
+                        #   direction_vector = np.array([0, 0]) if distance == 0 else np.array([dx, dy]) / distance
+                        #   start_point = (int(ra[0]), int(ra[1]))
+                        #   end_point = (int(ra[0] + direction_vector[0]*50), int(ra[1] + direction_vector[1]*50))
+                        #   cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0, 64), 2, tipLength=0.1)
                           
                           # angle = angle_between((rb[0], rb[1]), (1, 0)) 
                           
@@ -348,29 +363,80 @@ def run(
                           # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
                           fn = ra[3] - rb[3]
                           if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
-                              outside = True
+                            outside = True
                           else:
-                              outside = False
+                            outside = False
 
-                              V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
-                              v_xy = dxy * 30 * 3.6 / fn
-                              v_r = dr * 30 * 3.6 / fn
-                              v_s = dR * 30/ fn
-                              dR_sum += dR
-                              fn_sum += fn
+                            V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
+                            v_xy = dxy * 30 * 3.6 / fn
+                            v_r = dr * 30 * 3.6 / fn
+                            v_s = dR * 30/ fn
+                            dR_sum += dR
+                            fn_sum += fn
 
-                              V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
-                              
-                              c_color = rgb(0, 12, V) if M==50 else rgb(0,20,V)
+                            V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
+                            c_color = rgb(0, 12, V) if M==50 else rgb(0,20,V)
 
-                              thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
-                              cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
+                            thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
+                            cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
 
+                            dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                            dx_sum += dX
+                            dy_sum += dY
+                            
+                        # for jj in range(1, len(pts[id])):
+                        #     dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                        #     dx_sum += dX
+                        #     dy_sum += dY
+
+                            # # 現在と前回の座標から進行方向ベクトルを作成する
+                            # dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                            # vector = np.array([dX, dY])
+
+                            # # ベクトルを正規化
+                            # norm = np.linalg.norm(vector)
+                            # if norm > 0:
+                            #     vector = vector / norm
+
+                            # # ベクトルを描画
+                            # center = (int((pts[id][jj][0] + pts[id][jj-1][0]) / 2), int((pts[id][jj][1] + pts[id][jj-1][1]) / 2))
+                            # arrow_start = (int(center[0] + vector[0] * 20), int(center[1] + vector[1] * 20))
+                            # arrow_end = (int(center[0] + vector[0] * 40), int(center[1] + vector[1] * 40))
+                            # cv2.arrowedLine(im0, arrow_start, arrow_end, (0, 255, 0), 2, tipLength=0.3)
+                            #  = (pts[id][jj-1][:2]) - (pts[id][jj][:2])
+
+                            # distance = np.sqrt(dx**2 + dy**2)
+                            # direction_vector = np.array([0, 0]) if distance == 0 else np.array([dx, dy]) / distance
+                            # start_point = (int(ra[0]), int(ra[1]))
+                            # end_point = (int(ra[0] + direction_vector[0]*50), int(ra[1] + direction_vector[1]*50))
+
+                            # start_point = (pts[id][jj-1][:2])
+                            # end_point = (pts[id][jj][:2])
+                            # # cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0, 64), 2, tipLength=0.1)
+                            # cv2.arrowedLine(im0, (pts[id][jj-1][:2]), (pts[id][jj][:2]), (0, 255, 0, 64), 2, tipLength=0.1)
+
+                        
                         num += 1 if not outside else 0
 
                         V_sum += V_average
                         V_all = V_sum / num if num > 1 else V_sum
                         V_a = V / num if num > 1 else V
+
+                        dx_mean = dx_sum / len(pts[id])
+                        dy_mean = dy_sum / len(pts[id])
+                        # dx_mean = dx_sum / 50
+                        # dy_mean = dy_sum / 50
+
+                        start_point = (int(pts[id][-1][0]), int(pts[id][-1][1]))
+                        # end_point = (int(pts[id][-1][0] + dx_mean), int(pts[id][-1][1] + dy_mean))
+                        end_point = (int(pts[id][-1][0] + dx_mean*10), int(pts[id][-1][1] + dy_mean*10))
+                        # end_point = (int(ra[0] + direction_vector[0]*100), int(ra[1] + direction_vector[1]*100))
+
+                        # cv2.arrowedLine(im0, start_point, end_point, (255, 153, 153), 3, tipLength=0.3)
+                        overlay = im0.copy()
+                        cv2.arrowedLine(im0, start_point, end_point, (255, 153, 153), 3, tipLength=0.3, line_type=cv2.LINE_AA)
+                        alpha = 0.5
+                        im0 = cv2.addWeighted(overlay, alpha, im0, 1 - alpha, 0)
 
 
                         if save_txt:
