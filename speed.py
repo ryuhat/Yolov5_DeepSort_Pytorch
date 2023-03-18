@@ -152,16 +152,7 @@ def run(
     # Run tracking
     M = parameters['M']
     pts = [deque(maxlen=M) for _ in range(9999)]
-    # fn = 0
-    # simple = 0
-    # V_all=0
-    # num=0
-    # v_all_th=0
-    # scale=0
-    # n=0
-    # num=0
     fn = simple = V_all = num = v_all_th = scale = n = 0
-
 
     start = time.perf_counter()
     #model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
@@ -253,6 +244,7 @@ def run(
                 v_th = 5.2 if M==50 else 8
 
                 v_all_th = 5.2 if scale else 250
+                # distance = 0
                 
                 # draw boxes for visualization
                 if len(outputs[i]) > 0:
@@ -291,7 +283,6 @@ def run(
 
                         depth_coef = 1
                         distance_coef = 1
-                      
                         x = bbox_left + bbox_w/2
                         y = bbox_top + bbox_h/2
                         l = np.sqrt(bbox_w**2 + bbox_h**2)
@@ -312,9 +303,10 @@ def run(
                             # v_th = 1000
                         
                         z = k/l
+                        # distance = get_arrow_distance(im0, pts[id], vec_len=10, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5)
+                        # z1 = k/l if distance==0 else k/distance
 
                         centers = [int(x), int(y), z, frame_idx]
-                  
                         pts[id].append(centers)
                         cv2.circle(im0, centers[:2], 1, (0,255,0), 2)
                         # print(pts[id])
@@ -329,44 +321,65 @@ def run(
                         dy_sum = 0
                         vec_len = 10
 
+                        dx_mean = dx_sum / vec_len
+                        dy_mean = dy_sum / vec_len
+
+                        def draw_arrow(im, pts, vec_len, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5):
+                            dx_mean = dx_sum / vec_len
+                            dy_mean = dy_sum / vec_len
+                            
+                            start_point = (int(pts[-1][0]), int(pts[-1][1]))
+                            end_point = (int(pts[-1][0] + dx_mean * vec_len), int(pts[-1][1] + dy_mean * vec_len))
+                            
+                            overlay = im.copy()
+                            cv2.arrowedLine(overlay, start_point, end_point, color, thickness, tipLength=tip_length, line_type=cv2.LINE_AA)
+                            im = cv2.addWeighted(overlay, alpha, im, 1 - alpha, 0)
+                            
+                            return im
+
+                        def get_arrow_distance(im, pts, vec_len, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5):
+                            dx_mean = dx_sum / vec_len
+                            dy_mean = dy_sum / vec_len
+                            # Call draw_arrow() to get the arrow start and end points
+                            start_point = (int(pts[-1][0]), int(pts[-1][1]))
+                            end_point = (int(pts[-1][0] + dx_mean * vec_len), int(pts[-1][1] + dy_mean * vec_len))
+                            
+                            # Calculate the distance between the start and end points
+                            distance = ((end_point[0] - start_point[0])**2 + (end_point[1] - start_point[1])**2)**0.5
+                            
+                            return distance
+
+                        # for jj in range(1, len(pts[id])):
+                        #     if jj >= len(pts[id]) - vec_len:
+                        #             vec_dx, vec_dy = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                        #             dx_sum += vec_dx
+                        #             dy_sum += vec_dy
+                        # distance = get_arrow_distance(im0, pts[id], vec_len=10, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5)
+
                         for jj in range(1, len(pts[id])):
-                          if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
-                              continue
-                          # rf = pts[id][jj-5] # -5
-                          # rl = pts[id][-1] # last
-                          ra, rb =  pts[id][jj], pts[id][jj-1] # after and before 
-                          # ra = # after
-                          dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
+                            if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
+                                continue
+                            ra, rb =  pts[id][jj], pts[id][jj-1] # after and before 
 
-                          # draw arrow
-                        #   distance = np.sqrt(dx**2 + dy**2 + dz**2)
-                        #   direction_vector = np.array([dx, dy, dz]) / distance
-                        #   start_point = (int(ra[0]), int(ra[1]), int(ra[2]))
-                        #   end_point = (int(ra[0] + direction_vector[0]), int(ra[1] + direction_vector[1]), int(ra[2] + direction_vector[2]))
-                        #   cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0), 2, tipLength=0.1)
-                          
-                        #   distance = np.sqrt(dx**2 + dy**2)
-                        #   direction_vector = np.array([0, 0]) if distance == 0 else np.array([dx, dy]) / distance
-                        #   start_point = (int(ra[0]), int(ra[1]))
-                        #   end_point = (int(ra[0] + direction_vector[0]*50), int(ra[1] + direction_vector[1]*50))
-                        #   cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0, 64), 2, tipLength=0.1)
-                          
-                          # angle = angle_between((rb[0], rb[1]), (1, 0)) 
-                          
-                          dxy = np.sqrt(dx**2+dy**2)
-                          dr = np.sqrt(dx**2+dy**2+dz**2)
-                          # dR = dr * ra[3] *18
-                          dX, dY, dZ = sx*dx, sy*dy, sz*dz
-                          # print(f"dR=({dX}, {dY}, {dZ})")
+                            
+                            # z1 = k/l if distance==0 else k/distance
+                            
+                            dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
 
-                          dR = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
-                          # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
-                          # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
-                          fn = ra[3] - rb[3]
-                          if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
-                            outside = True
-                          else:
-                            outside = False
+                            dxy = np.sqrt(dx**2+dy**2)
+                            dr = np.sqrt(dx**2+dy**2+dz**2)
+                            # dR = dr * ra[3] *18
+                            dX, dY, dZ = sx*dx, sy*dy, sz*dz
+                            # print(f"dR=({dX}, {dY}, {dZ})")
+
+                            dR = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
+                            # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
+                            # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
+                            fn = ra[3] - rb[3]
+                            if bbox_left < 5 or bbox_right > 1915 or bbox_top < 5 or bbox_bottom > 1075:
+                                outside = True
+                            else:
+                                outside = False
 
                             V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
                             v_xy = dxy * 30 * 3.6 / fn
@@ -381,37 +394,16 @@ def run(
                             thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
                             cv2.line(im0,(pts[id][jj-1][:2]), (pts[id][jj][:2]),c_color,thickness)
 
-
                             if jj >= len(pts[id]) - vec_len:
-                                dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
-                                dx_sum += dX
-                                dy_sum += dY
+                                    vec_dx, vec_dy = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
+                                    dx_sum += vec_dx
+                                    dy_sum += vec_dy
 
-                            # # 現在と前回の座標から進行方向ベクトルを作成する
-                            # dX, dY = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
-                            # vector = np.array([dX, dY])
 
-                            # # ベクトルを正規化
-                            # norm = np.linalg.norm(vector)
-                            # if norm > 0:
-                            #     vector = vector / norm
+                            
 
-                            # # ベクトルを描画
-                            # center = (int((pts[id][jj][0] + pts[id][jj-1][0]) / 2), int((pts[id][jj][1] + pts[id][jj-1][1]) / 2))
-                            # arrow_start = (int(center[0] + vector[0] * 20), int(center[1] + vector[1] * 20))
-                            # arrow_end = (int(center[0] + vector[0] * 40), int(center[1] + vector[1] * 40))
-                            # cv2.arrowedLine(im0, arrow_start, arrow_end, (0, 255, 0), 2, tipLength=0.3)
-                            #  = (pts[id][jj-1][:2]) - (pts[id][jj][:2])
-
-                            # distance = np.sqrt(dx**2 + dy**2)
-                            # direction_vector = np.array([0, 0]) if distance == 0 else np.array([dx, dy]) / distance
-                            # start_point = (int(ra[0]), int(ra[1]))
-                            # end_point = (int(ra[0] + direction_vector[0]*50), int(ra[1] + direction_vector[1]*50))
-
-                            # start_point = (pts[id][jj-1][:2])
-                            # end_point = (pts[id][jj][:2])
-                            # # cv2.arrowedLine(im0, start_point, end_point, (0, 255, 0, 64), 2, tipLength=0.1)
-                            # cv2.arrowedLine(im0, (pts[id][jj-1][:2]), (pts[id][jj][:2]), (0, 255, 0, 64), 2, tipLength=0.1)
+                        im0 = draw_arrow(im0, pts[id], 10, (255, 153, 153), 3, 0.3, 0.5)
+                        distance = get_arrow_distance(im0, pts[id], vec_len=10, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5)
 
                         
                         num += 1 if not outside else 0
@@ -420,29 +412,13 @@ def run(
                         V_all = V_sum / num if num > 1 else V_sum
                         V_a = V / num if num > 1 else V
 
-                        dx_mean = dx_sum / vec_len
-                        dy_mean = dy_sum / vec_len
-                        # dx_mean = dx_sum / 50
-                        # dy_mean = dy_sum / 50
-
-                        start_point = (int(pts[id][-1][0]), int(pts[id][-1][1]))
-                        # end_point = (int(pts[id][-1][0] + dx_mean), int(pts[id][-1][1] + dy_mean))
-                        end_point = (int(pts[id][-1][0] + dx_mean*10), int(pts[id][-1][1] + dy_mean*10))
-                        # end_point = (int(ra[0] + direction_vector[0]*100), int(ra[1] + direction_vector[1]*100))
-
-                        # cv2.arrowedLine(im0, start_point, end_point, (255, 153, 153), 3, tipLength=0.3)
-                        overlay = im0.copy()
-                        cv2.arrowedLine(im0, start_point, end_point, (255, 153, 153), 3, tipLength=0.3, line_type=cv2.LINE_AA)
-                        alpha = 0.5
-                        im0 = cv2.addWeighted(overlay, alpha, im0, 1 - alpha, 0)
-
-
                         if save_txt:
                             # Write MOT compliant results to file
                             # with open(txt_path + '.txt', 'a') as f:
                             #     f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
                             #                                    bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
                             fz = round(z, 1)
+                            # fz1 = round(z1, 1)
                             with open(txt_path + '.txt', 'a') as f:
                                 if ablation:
                                     f.write(('%g ' * 12+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
@@ -461,16 +437,26 @@ def run(
                             if scale: 
                               if simple: 
                                   label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
+                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f}), {distance:.1f}px'))
                               else:
                                   label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f})'))
+                                  (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}km/h ({V:.1f}), {distance:.1f}px'))
 
                             else:
                               label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                   (f'{id} {conf:.2f}' if hide_class else f'{id}: {V_average:.1f}px/s ({V:.1f}) <{angle:.1f}>'))
                      
-                            
+                            # dx_mean = dx_sum / vec_len
+                            # dy_mean = dy_sum / vec_len
+
+                            # start_point = (int(pts[id][-1][0]), int(pts[id][-1][1]))
+                            # end_point = (int(pts[id][-1][0] + dx_mean*10), int(pts[id][-1][1] + dy_mean*10))
+
+                            # overlay = im0.copy()
+                            # cv2.arrowedLine(im0, start_point, end_point, (255, 153, 153), 3, tipLength=0.3, line_type=cv2.LINE_AA)
+                            # alpha = 0.5
+                            # im0 = cv2.addWeighted(overlay, alpha, im0, 1 - alpha, 0)
+
                             if outside:
                               annotator = Annotator(im0, line_width=1, example=str(names))
                               annotator.box_label(bbox, label=None, color=(255, 20, 2))
@@ -482,6 +468,8 @@ def run(
                             else:
                               annotator = Annotator(im0, line_width=3, example=str(names))
                               annotator.box_label(bbox, label, color=(2, 200, 2))
+                            
+                            
                         
                             # annotator.box_label(bbox, label, color=color)
                             
@@ -500,23 +488,23 @@ def run(
 
           
             if simple==0 and save_vid:
-              if V_all > v_all_th:
-                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
-              else:    
-                  cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
-                      (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)
-              cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
-                  (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
-              T = (frame_idx + 1) / 30
-              T2 = strftime("%M:%S", gmtime(T))
-              cv2.putText(im0, f'{T2}',
-                  (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
+                if V_all > v_all_th:
+                    cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                        (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 250), thickness=3)    
+                else:    
+                    cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
+                        (430, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (100, 255, 0), thickness=2)
+                cv2.putText(im0, 'num: {:.0f} ({:.0f})'.format(n, num),
+                    (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 100), thickness=2)    
+                T = (frame_idx + 1) / 30
+                T2 = strftime("%M:%S", gmtime(T))
+                cv2.putText(im0, f'{T2}',
+                    (1820, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), thickness=2)
 
-              t_ms = sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3
-              fps_ms = 1000 / t_ms 
-              cv2.putText(im0, 'FPS: {:.0f}'.format(fps_ms),
-                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), thickness=2)   
+                t_ms = sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3
+                fps_ms = 1000 / t_ms 
+                cv2.putText(im0, 'FPS: {:.0f}'.format(fps_ms),
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), thickness=2)   
             
             # Stream results
             im0 = annotator.result()
@@ -547,7 +535,7 @@ def run(
 
             prev_frames[i] = curr_frames[i]
         
-        if V_all > v_all_th - 1.1:
+        if V_all > v_all_th:
             # Print total time (preprocessing + inference + NMS + tracking)
             LOGGER.warning(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, \033[31mspeed:({V_all:.1f})\033[0m, num:({num})")  
         else:
