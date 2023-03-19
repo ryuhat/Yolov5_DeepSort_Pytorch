@@ -399,12 +399,8 @@ def run(
                                     dx_sum += vec_dx
                                     dy_sum += vec_dy
 
-
-                            
-
                         im0 = draw_arrow(im0, pts[id], 10, (255, 153, 153), 3, 0.3, 0.5)
                         distance = get_arrow_distance(im0, pts[id], vec_len=10, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5)
-
                         
                         num += 1 if not outside else 0
 
