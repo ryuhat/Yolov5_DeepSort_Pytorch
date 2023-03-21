@@ -454,16 +454,16 @@ def run(
                             # im0 = cv2.addWeighted(overlay, alpha, im0, 1 - alpha, 0)
 
                             if outside:
-                              annotator = Annotator(im0, line_width=1, example=str(names))
-                              annotator.box_label(bbox, label=None, color=(255, 20, 2))
+                                annotator = Annotator(im0, line_width=1, example=str(names))
+                                annotator.box_label(bbox, label=None, color=(255, 20, 2))
                                 # plot_one_box(bboxes, im0, label=None, color=(255, 20, 2), line_thickness=1)
                             # elif V_average > v_th and simple == 0:
                             elif V_average > 6 and simple == 0:
-                              annotator = Annotator(im0, line_width=3, example=str(names))
-                              annotator.box_label(bbox, label, color=(2, 2, 255))
+                                annotator = Annotator(im0, line_width=3, example=str(names))
+                                annotator.box_label(bbox, label, color=(2, 2, 255))
                             else:
-                              annotator = Annotator(im0, line_width=3, example=str(names))
-                              annotator.box_label(bbox, label, color=(2, 200, 2))
+                                annotator = Annotator(im0, line_width=3, example=str(names))
+                                annotator.box_label(bbox, label, color=(2, 200, 2))
                             
                             
                         
@@ -477,12 +477,10 @@ def run(
                                 save_one_box(np.array(bbox, dtype=np.int16), imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
                             
                             # if keypoints:
-                                       
             else:
                 pass
                 #tracker_list[i].tracker.pred_n_update_all_tracks()
 
-          
             if simple==0 and save_vid:
                 if V_all > v_all_th:
                     cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
