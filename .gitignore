@@ -23,3 +23,8 @@ val_utils/
 
 # interactive plots
 *.html
+
+venv/
+videos/
+weights/
+gui/
