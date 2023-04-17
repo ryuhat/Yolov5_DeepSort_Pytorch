@@ -45,7 +45,7 @@ from collections import deque
 import time
 from time import strftime
 from time import gmtime
-from yolov8.ultralytics.yolo.utils.plotting import plot_centroid, rgb
+from plotting_speed import plot_centroid, rgb
 
 @torch.no_grad()
 def run(
