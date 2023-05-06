@@ -20,6 +20,30 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 
+def draw_arrow(im, pts, vec_len, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5):
+    dx_mean = dx_sum / vec_len
+    dy_mean = dy_sum / vec_len
+    
+    start_point = (int(pts[-1][0]), int(pts[-1][1]))
+    end_point = (int(pts[-1][0] + dx_mean * vec_len), int(pts[-1][1] + dy_mean * vec_len))
+    
+    overlay = im.copy()
+    cv2.arrowedLine(overlay, start_point, end_point, color, thickness, tipLength=tip_length, line_type=cv2.LINE_AA)
+    im = cv2.addWeighted(overlay, alpha, im, 1 - alpha, 0)
+    
+    return im
+
+def get_arrow_distance(im, pts, vec_len, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5):
+    dx_mean = dx_sum / vec_len
+    dy_mean = dy_sum / vec_len
+    # Call draw_arrow() to get the arrow start and end points
+    start_point = (int(pts[-1][0]), int(pts[-1][1]))
+    end_point = (int(pts[-1][0] + dx_mean * vec_len), int(pts[-1][1] + dy_mean * vec_len))
+    
+    # Calculate the distance between the start and end points
+    distance = ((end_point[0] - start_point[0])**2 + (end_point[1] - start_point[1])**2)**0.5
+    
+    return distance
 
 # from yolov7
 
