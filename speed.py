@@ -463,8 +463,6 @@ def run(
                             else:
                                 annotator = Annotator(im0, line_width=3, example=str(names))
                                 annotator.box_label(bbox, label, color=(2, 200, 2))
-                            
-                            
                         
                             # annotator.box_label(bbox, label, color=color)
                             
