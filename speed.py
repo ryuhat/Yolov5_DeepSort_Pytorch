@@ -545,7 +545,6 @@ def run(
         LOGGER.info(f'({dt:.2f} mins)')
     if update:
         strip_optimizer(yolo_weights)  # update model (to fix SourceChangeWarning)
-        
 
 
 def parse_opt():
