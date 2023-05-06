@@ -46,6 +46,7 @@ import time
 from time import strftime
 from time import gmtime
 from plotting_speed import plot_centroid, rgb
+import yaml
 
 @torch.no_grad()
 def run(
@@ -144,8 +145,6 @@ def run(
             if hasattr(tracker_list[i].model, 'warmup'):
                 tracker_list[i].model.warmup()
     outputs = [None] * bs
-    
-    import yaml
 
     with open('parameters.yaml', 'r') as file:
         parameters = yaml.safe_load(file)
