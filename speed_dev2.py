@@ -47,6 +47,7 @@ from time import strftime
 from time import gmtime
 from plotting_speed import plot_centroid, rgb
 import yaml
+import matplotlib.pyplot as plt
 
 @torch.no_grad()
 def run(
@@ -417,16 +418,23 @@ def run(
                             fz = round(z, 1)
                             txt_path2 = str(save_dir / 'tracks' / 'test')
                             txt_path3 = str(save_dir / 'tracks' / 'ablation')
+                            txt_path4 = str(save_dir / 'tracks' / 'simple')
+                            txt_path5 = str(save_dir / 'tracks' / 'velocity')
+                            
                             # fz1 = round(z1, 1)
                             with open(txt_path + '.txt', 'a') as f:
-                                    f.write(('%g ' * 8+ '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
+                                    f.write(('%g ' * 8 + '\n') % (frame_idx + 1, id, V_average, V, x,  # MOT format
                                                                 y, fz, n))
                             with open(txt_path2 + '.txt', 'a') as f:
-                                f.write(('%g ' * 7+ '\n') % (frame_idx + 1, id, x,  # test
+                                f.write(('%g ' * 7 + '\n') % (frame_idx + 1, id, x,  # test
                                                                 y, fz, V, n))
                             with open(txt_path3 + '.txt', 'a') as f:
-                                f.write(('%g ' * 12+ '\n') % (frame_idx + 1, id, V_average, V, x,  # ablation
+                                f.write(('%g ' * 12 + '\n') % (frame_idx + 1, id, V_average, V, x,  # ablation
                                                             y, fz, num, n, v_xy, v_r, v_s))
+                            with open(txt_path4 + '.txt', 'a') as f:
+                                f.write(('%g ' * 5 + '\n') % (frame_idx + 1, id, x, y, fz))
+                            with open(txt_path5 + '.txt', 'a') as f:
+                                f.write(('%g ' * 3 + '\n') % (frame_idx + 1, id, V))
 
                         if save_vid or save_crop or show_vid:  # Add bbox/seg to image
                             c = int(cls)  # integer class
@@ -483,7 +491,8 @@ def run(
             else:
                 pass
                 #tracker_list[i].tracker.pred_n_update_all_tracks()
-
+                
+            
             if simple==0 and save_vid:
                 if V_all > v_all_th:
                     cv2.putText(im0, 'Speed: {:.1f}km/h'.format(V_all) if scale else 'Speed: {:.1f}px/s'.format(V_all),
@@ -538,7 +547,6 @@ def run(
         else:
             # Print total time (preprocessing + inference + NMS)
             LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{sum([dt.dt for dt in dt if hasattr(dt, 'dt')]) * 1E3:.1f}ms, speed:({V_all:.1f}), num:({num})")
-
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     # t = tuple(x.t / seen * 1E3 if seen > 0 else 0 for x in dt)
@@ -551,6 +559,50 @@ def run(
         LOGGER.info(f'({dt:.2f} mins)')
     if update:
         strip_optimizer(yolo_weights)  # update model (to fix SourceChangeWarning)
+        
+    #plot
+    txt_path5 = str(save_dir / 'tracks' / 'velocity')
+    plot_file = txt_path5 + '.txt'
+    # frame_idx + 1, id, V
+    def plot_velocities(txt_path):
+        # Load data from file
+        data = np.loadtxt(txt_path)
+
+        # Extract columns of frame_idx, id, and V
+        frame_idx = data[:, 0]
+        ids = np.unique(data[:, 1]).astype(int)
+        V = data[:, -1]
+
+        # Plot frame_idx vs V for each id
+        for id in ids:
+            mask = (data[:, 1] == id)
+            id_frame_idx = frame_idx[mask]
+            id_V = V[mask]
+            plt.plot(id_frame_idx, id_V, label=f'ID {id}')
+
+        plt.xlabel('frame_idx')
+        plt.ylabel('V')
+        plt.legend()
+        plt.show()
+
+    plot_velocities(plot_file)
+    
+    def tree(dir_path, padding=''):
+        print(padding[:-1] + '+--' + os.path.basename(dir_path) + '/')
+        padding += ' '
+        files = os.listdir(dir_path)
+        for file in files:
+            path = os.path.join(dir_path, file)
+            if os.path.isdir(path):
+                tree(path, padding + '| ')
+            else:
+                print(padding + '|--' + file)
+            
+            
+    crop_path = str(save_dir / 'crops' / 'tuna')
+    # tree(crop_path)
+    with open('tree.txt', 'w') as file:
+        tree(crop_path, file=file)
 
 
 def parse_opt():
@@ -568,7 +620,7 @@ def parse_opt():
     parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt', default=1)
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
-    parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
+    parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes', default=1)
     parser.add_argument('--save-trajectories', action='store_true', help='save trajectories for each track')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results', default=1)
     parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
@@ -600,7 +652,11 @@ def main(opt):
     check_requirements(requirements=ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
     run(**vars(opt))
 
-
 if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
+    # txt_path5 = str(save_dir / 'tracks' / 'velocity')
+    # plot_file = txt_path5 + '.txt'
+    # # frame_idx + 1, id, V
+    # plot_velocity(plot_file)
+
