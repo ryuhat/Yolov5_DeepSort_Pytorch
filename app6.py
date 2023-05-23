@@ -9,19 +9,16 @@ def get_latest_exp_number():
     if not exp_folders:
         return 0
     latest_exp_folder = max(exp_folders, key=lambda f: int(f.name[3:]))
-    latest_exp_number = int(latest_exp_folder.name[3:]) + 1
+    latest_exp_number = int(latest_exp_folder.name[3:])+1
     return latest_exp_number
 
-def run_speed_command(input_type, video_path, video_upload, weights_path):
-    if input_type == "Video Path":
-        video_path = Path(video_path)
-    else:
-        video_path = Path(video_upload.name)
-        video_upload.save(video_path)
+def run_speed_command(video_path, weights_path, tracking_method):
+    video_path = Path(video_path)
     latest_exp_number = get_latest_exp_number()
     output_video_path = f"./runs/track/exp{latest_exp_number}/{video_path.stem}.mp4"
+    output_pdf_path = f"./runs/track/exp{latest_exp_number}/tracks/velocity.pdf"
     output_image_path = f"./runs/track/exp{latest_exp_number}/tracks/velocity.jpg"
-    command = f"python run.py --source {video_path} --yolo-weights {weights_path} --save-vid --save-txt"
+    command = f"python run.py --source {video_path} --yolo-weights {weights_path} --tracking-method {tracking_method} --save-vid --save-txt"
     print("Executing command:", command)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = ""
@@ -32,17 +29,20 @@ def run_speed_command(input_type, video_path, video_upload, weights_path):
         output += line + "\n"
         print(line)
     process.wait()
-    with open(output_video_path, "rb") as f:
-        video_data = f.read()
-    return video_data, output_image_path, output
+    return output_video_path, output_image_path, output_pdf_path, output  # Updated return statement
 
-input_type = gr.inputs.Radio(["Video Path", "Upload"], label="Input", default="Video Path")
-input_video_path = gr.inputs.Textbox(label="Video Path (*.mp4)", default="./videos/733.mp4", placeholder="Enter video path")
-input_video_upload = gr.inputs.Video(type="mp4", label="Upload Video", source="upload")
+input_video = gr.inputs.Textbox(label="Input Video Path (*.mp4)", default="./videos/733.mp4")
 input_weights = gr.inputs.Textbox(label="Path to weights file", default="./weights/best.pt")
+# input_tracking_method = gr.inputs.Textbox(label="Tracking Method", default="bytetrack")
+input_tracking_method = gr.inputs.Dropdown(
+    choices=["bytetrack", "strongsort"],
+    label="Tracking Method",
+    default="bytetrack"
+)
 
-output_video = gr.outputs.Video(type="mp4", label="Output Video")
-output_image = gr.outputs.Image(type="pil", label="Velocity Image")
+output_video = gr.outputs.Video(type="mp4", label="Speed Estimated Video")
+output_image = gr.outputs.Image(type="pil", label="Velocity Plot") 
+output_pdf = gr.outputs.File(label="Velocity Plot PDF") 
 output_text = gr.outputs.Textbox(label="Process Output")
 
 title = "Speed Prediction"
@@ -51,11 +51,12 @@ description = "Predict the speed of an object in a video using a PyTorch model."
 examples = [["./videos/733.mp4", "./weights/best.pt"]]
 
 gradio_app = gr.Interface(run_speed_command,
-                          inputs=[input_type, input_video_path, input_video_upload, input_weights],
-                          outputs=[output_video, output_image, output_text],
+                          inputs=[input_video, input_weights, input_tracking_method],
+                          outputs=[output_video, output_image, output_pdf, output_text],
                           title=title,
                           description=description,
                           examples=examples)
 
 if __name__ == "__main__":
+    # gradio_app.launch(share=True)
     gradio_app.launch()
