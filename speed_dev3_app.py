@@ -48,6 +48,8 @@ from time import gmtime
 from plotting_speed import plot_centroid, rgb
 import yaml
 import matplotlib.pyplot as plt
+import gradio as gr
+import subprocess
 
 @torch.no_grad()
 def run(
@@ -87,10 +89,28 @@ def run(
 ):
 
     source = str(source)
-    save_img = not nosave and not source.endswith('.txt')  # save inference images
-    is_file = Path(source).suffix[1:] in (VID_FORMATS)
-    is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
-    webcam = source.isnumeric() or source.endswith('.txt') or (is_url and not is_file)
+
+    # input_video = gr.inputs.Video(type="mp4")
+    # input_weights = gr.inputs.Textbox(label="Path to weights file")
+
+    # output_video = gr.outputs.Video(type="file", label="Output Video")
+
+    # title = "Speed Prediction"
+    # description = "Predict the speed of an object in a video using a PyTorch model."
+    # examples = [["./videos/733.mp4", "./weights/best.pt"]]
+
+    # gradio_app = gr.Interface(run_speed_command, 
+    #                         inputs=[input_video, input_weights], 
+    #                         outputs=output_video, 
+    #                         title=title, 
+    #                         description=description,
+    #                         examples=examples)
+    # gradio_app.launch()
+
+    # save_img = not nosave and not source.endswith('.txt')  # save inference images
+    # is_file = Path(source).suffix[1:] in (VID_FORMATS)
+    # is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
+    # webcam = source.isnumeric() or source.endswith('.txt') or (is_url and not is_file)
     if is_url and is_file:
         source = check_file(source)  # download
 
@@ -583,206 +603,27 @@ def run(
         plt.xlabel('frame_idx')
         plt.ylabel('V')
         plt.legend()
-        plt.savefig(txt_path5 + '.pdf')
-        plt.savefig(txt_path5 + '.jpg')
-        plt.show(block=False)
-        time.sleep(5)
-        plt.close()
+        plt.show()
 
     plot_velocities(plot_file)
     
-    #plot moving average
-    import pandas as pd
-    txt_path5 = str(save_dir / 'tracks' / 'velocity')
-    plot_file = txt_path5 + '.txt'
-    # frame_idx + 1, id, V
-
-    def plot_velocities_with_ma(txt_path, window_size=5):
-        # Load data from file
-        data = pd.read_csv(txt_path, delimiter='\t', header=None, names=['frame_idx', 'id', 'V'])
-
-        # Clean data by removing non-numeric IDs
-        data['id'] = pd.to_numeric(data['id'], errors='coerce')
-        data = data.dropna(subset=['id'])
-
-        # Calculate moving average
-        data['V_MA'] = data['V'].rolling(window=window_size, center=True).mean()
-
-        # Group data by ID
-        grouped_data = data.groupby('id')
-
-        # Plot frame_idx vs V for each group (ID)
-        for id, group in grouped_data:
-            plt.plot(group['frame_idx'], group['V_MA'], label=f'ID {id}')
-
-        plt.xlabel('frame_idx')
-        plt.ylabel('V')
-        plt.legend()
-        plt.savefig(txt_path5 + '_ma.pdf')
-        plt.savefig(txt_path5 + '_ma.jpg')
-        plt.show(block=False)
-        time.sleep(3)
-        plt.close()
-
-    plot_velocities_with_ma(plot_file)
-    
-    
-    def jaccard_similarity(list1, list2):
-        overlaps = 0
-        total = len(list1) + len(list2)
-        for d in list1:
-            for g in list2:
-                if (d[0] <= g[1] and d[1] >= g[0]):
-                    overlaps += 1
-                    total -= 1
-                    break
-        return overlaps / total
-
-    def simpson_similarity(list1, list2):
-        overlaps = 0
-        for d in list1:
-            for g in list2:
-                if (d[0] <= g[1] and d[1] >= g[0]):
-                    overlaps += 1
-                    break
-        return overlaps / min(len(list1), len(list2))
-
-    def dice_similarity(list1, list2):
-        overlaps = 0
-        for d in list1:
-            for g in list2:
-                if (d[0] <= g[1] and d[1] >= g[0]):
-                    overlaps += 1
-                    break
-        return (2*overlaps) / (len(list1) + len(list2))
-    
-    import seaborn as sns
-    sns.set()
-    
-#     #@markdown #### v_th: threshhold for burst swimming
-# v_th = 8 #@param {type:"integer"}
-
-# # Initialize an empty list to store the intervals
-# v_sma_intervals = []
-
-# # Initialize an empty dictionary to store the intervals
-# v_sma_intervals = defaultdict(list)
-
-# v = 'v_xy_sma_adj' #@param ['v_sma', 'v_xy_sma_adj', 'v_r_sma_adj', 'v_s_sma_adj']
-# v_list = ['v_sma', 'v_xy_sma_adj', 'v_r_sma_adj', 'v_s_sma_adj']
-# for v in v_list:
-#   print(v)
-#   # Group the dataframe by 'id' and iterate through each group
-#   for id, group in df.groupby('id'):
-#       T_list = group['T'].tolist()
-#       v_sma_list = group[v].tolist()
-#       start = None
-#       end = None
-#       for i in range(len(v_sma_list)):
-#           if v_sma_list[i] > v_th:
-#               if start is None:
-#                   start = T_list[i]
-#               end = T_list[i]
-#           elif start is not None:
-#               # Set start and end to fixed intervals of width 10
-#               rounded_start = int(start / 10) * 10
-#               rounded_end = rounded_start + 10
-#               v_sma_intervals[(rounded_start, rounded_end)].append(id)
-#               start = None
-#               end = None
-#       if start is not None:
-#           # Set start and end to fixed intervals of width 10
-#           rounded_start = int(start / 10) * 10
-#           rounded_end = rounded_start + 10
-#           v_sma_intervals[(rounded_start, rounded_end)].append(id)
-
-#   print(f'dT&id: {v_sma_intervals}')
-
-#   # Initialize an empty list to store the intervals
-#   interval_list = []
-
-#   # Iterate through the keys of the v_sma_intervals dictionary
-#   for interval in v_sma_intervals.keys():
-#       # Append the interval to the list
-#       interval_list.append(interval)
-
-#   detected = interval_list
-#   #@markdown #### gts: ground-truth of burst swimming time T
-#   gts = [355, 575, 815] #@param {type:"string"}
-#   #@markdown #### dt: detected width
-#   dt = 5 #@param {type:"integer"}
-#   GT = [(gts[i]-dt, gts[i]+dt) for i in range(len(gts))]
-
-#   dice = dice_similarity(detected, GT)
-#   print(f"dice: {dice}")
-
-#   simpson = simpson_similarity(detected, GT)
-#   print(f'simpson: {simpson}')
-
-#   jaccard = jaccard_similarity(detected, GT)
-#   print(f'jaccard: {jaccard}')
-
-#   print(f'detected={detected}')
-#   print(f'      GT={GT}')
-  
-#   print('\n')
-
-#   plot = False #@param {type:"boolean"}
-#   if plot:
-#     # Set plot size
-#     plt.figure(figsize=(40,10))
-
-#     # Group the dataframe by 'id' and iterate through each group
-#     for id, group in df.groupby('id'):
-#         plt.plot(group['T'], group[v])
-
-#     # Create a list to store the labels
-#     labels = []
-
-#     # Plot the GT coordinates as filled areas
-#     for start, end in GT:
-#         if 'GT' not in labels:
-#             plt.fill_betweenx([0, 1], start, end, color='green', alpha=0.5, label='GT')
-#             labels.append('GT')
-#         else:
-#             plt.fill_betweenx([0, 1], start, end, color='green', alpha=0.5)
-
-#     # Plot the detected coordinates as filled areas
-#     for start, end in detected:
-#         if 'Detected' not in labels:
-#             plt.fill_betweenx([1, 2], start, end, color='blue', alpha=0.5, label='Detected')
-#             labels.append('Detected')
-#         else:
-#             plt.fill_betweenx([1, 2], start, end, color='blue', alpha=0.5)
-
-#     plt.axhline(v_th, color='r', linestyle='--', label = 'v_th = 8')
-#     plt.legend()
-#     plt.xlabel('T [s]')
-#     plt.ylabel(f'{v} [km/h]')
-
-#     save_fig = True #@param {type:"boolean"}
-#     if save_fig:
-#       plt.savefig('burst_detected.pdf', bbox_inches='tight', pad_inches=0)
-
-#     plt.show()
-
-    
-    # def tree(dir_path, padding=''):
-    #     print(padding[:-1] + '+--' + os.path.basename(dir_path) + '/')
-    #     padding += ' '
-    #     files = os.listdir(dir_path)
-    #     for file in files:
-    #         path = os.path.join(dir_path, file)
-    #         if os.path.isdir(path):
-    #             tree(path, padding + '| ')
-    #         else:
-    #             print(padding + '|--' + file)
+    def tree(dir_path, padding=''):
+        print(padding[:-1] + '+--' + os.path.basename(dir_path) + '/')
+        padding += ' '
+        files = os.listdir(dir_path)
+        for file in files:
+            path = os.path.join(dir_path, file)
+            if os.path.isdir(path):
+                tree(path, padding + '| ')
+            else:
+                print(padding + '|--' + file)
             
             
-    # crop_path = str(save_dir / 'crops' / 'tuna')
-    # # tree(crop_path)
-    # with open('tree.txt', 'w') as file:
-    #     tree(crop_path, file=file)
+    crop_path = str(save_dir / 'crops' / 'tuna')
+    # tree(crop_path)
+    with open('tree.txt', 'w') as file:
+        tree(crop_path, file=file)
+
 
 def parse_opt():
     parser = argparse.ArgumentParser()
