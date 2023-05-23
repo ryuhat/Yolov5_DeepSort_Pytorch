@@ -12,13 +12,13 @@ def get_latest_exp_number():
     latest_exp_number = int(latest_exp_folder.name[3:])+1
     return latest_exp_number
 
-def run_speed_command(video_path, weights_path, tracking_method):
+def run_speed_command(video_path, weights_path, tracking_method, iou_thres):
     video_path = Path(video_path)
     latest_exp_number = get_latest_exp_number()
     output_video_path = f"./runs/track/exp{latest_exp_number}/{video_path.stem}.mp4"
     output_pdf_path = f"./runs/track/exp{latest_exp_number}/tracks/velocity.pdf"
     output_image_path = f"./runs/track/exp{latest_exp_number}/tracks/velocity.jpg"
-    command = f"python run.py --source {video_path} --yolo-weights {weights_path} --tracking-method {tracking_method} --save-vid --save-txt"
+    command = f"python run.py --source {video_path} --yolo-weights {weights_path} --tracking-method {tracking_method} --iou-thres {iou_thres} --save-vid --save-txt"
     print("Executing command:", command)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = ""
@@ -40,6 +40,8 @@ input_tracking_method = gr.inputs.Dropdown(
     default="bytetrack"
 )
 
+input_iou_thres = gr.inputs.Slider(label="IOU Threshold", minimum=0.0, maximum=1.0, default=0.5, step=0.1)
+
 output_video = gr.outputs.Video(type="mp4", label="Speed Estimated Video")
 output_image = gr.outputs.Image(type="pil", label="Velocity Plot") 
 output_pdf = gr.outputs.File(label="Velocity Plot PDF") 
@@ -51,7 +53,7 @@ description = "Predict the speed of an object in a video using a PyTorch model."
 examples = [["./videos/733.mp4", "./weights/best.pt"]]
 
 gradio_app = gr.Interface(run_speed_command,
-                          inputs=[input_video, input_weights, input_tracking_method],
+                          inputs=[input_video, input_weights, input_tracking_method, input_iou_thres],
                           outputs=[output_video, output_image, output_pdf, output_text],
                           title=title,
                           description=description,
