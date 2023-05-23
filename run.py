@@ -563,6 +563,7 @@ def run(
     #plot
     txt_path5 = str(save_dir / 'tracks' / 'velocity')
     plot_file = txt_path5 + '.txt'
+    show=False
     # frame_idx + 1, id, V
     def plot_velocities(txt_path):
         # Load data from file
@@ -585,9 +586,10 @@ def run(
         plt.legend()
         plt.savefig(txt_path5 + '.pdf')
         plt.savefig(txt_path5 + '.jpg')
-        plt.show(block=False)
-        time.sleep(5)
-        plt.close()
+        if show:
+            plt.show(block=False)
+            time.sleep(5)
+            plt.close() 
 
     plot_velocities(plot_file)
     
@@ -620,9 +622,10 @@ def run(
         plt.legend()
         plt.savefig(txt_path5 + '_ma.pdf')
         plt.savefig(txt_path5 + '_ma.jpg')
-        plt.show(block=False)
-        time.sleep(3)
-        plt.close()
+        if show:
+            plt.show(block=False)
+            time.sleep(5)
+            plt.close() 
 
     plot_velocities_with_ma(plot_file)
     
