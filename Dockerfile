@@ -17,8 +17,13 @@ RUN pip install --no-cache -r requirements.txt
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
+
+# sudo docker build --tag yolov8-speed .
+
+
+
 # Clone with submodules
-RUN git clone --recurse-submodules https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet.git /usr/src/app
+# RUN git clone --recurse-submodules https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet.git /usr/src/app
 
 # ------------------------------------------------------------------------------
 
