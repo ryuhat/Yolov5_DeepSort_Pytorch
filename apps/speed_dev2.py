@@ -588,8 +588,6 @@ def run(
         plt.show(block=False)
         time.sleep(5)
         plt.close()
-
-    plot_velocities(plot_file)
     
     #plot moving average
     import pandas as pd
@@ -623,7 +621,8 @@ def run(
         plt.show(block=False)
         time.sleep(3)
         plt.close()
-
+        
+    plot_velocities(plot_file)
     plot_velocities_with_ma(plot_file)
     
     
@@ -783,6 +782,7 @@ def run(
     # # tree(crop_path)
     # with open('tree.txt', 'w') as file:
     #     tree(crop_path, file=file)
+
 
 def parse_opt():
     parser = argparse.ArgumentParser()

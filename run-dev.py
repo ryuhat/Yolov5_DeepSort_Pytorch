@@ -48,8 +48,6 @@ from time import gmtime
 from plotting_speed import plot_centroid, rgb
 import yaml
 import matplotlib.pyplot as plt
-import gradio as gr
-import subprocess
 
 @torch.no_grad()
 def run(
@@ -89,28 +87,10 @@ def run(
 ):
 
     source = str(source)
-
-    # input_video = gr.inputs.Video(type="mp4")
-    # input_weights = gr.inputs.Textbox(label="Path to weights file")
-
-    # output_video = gr.outputs.Video(type="file", label="Output Video")
-
-    # title = "Speed Prediction"
-    # description = "Predict the speed of an object in a video using a PyTorch model."
-    # examples = [["./videos/733.mp4", "./weights/best.pt"]]
-
-    # gradio_app = gr.Interface(run_speed_command, 
-    #                         inputs=[input_video, input_weights], 
-    #                         outputs=output_video, 
-    #                         title=title, 
-    #                         description=description,
-    #                         examples=examples)
-    # gradio_app.launch()
-
-    # save_img = not nosave and not source.endswith('.txt')  # save inference images
-    # is_file = Path(source).suffix[1:] in (VID_FORMATS)
-    # is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
-    # webcam = source.isnumeric() or source.endswith('.txt') or (is_url and not is_file)
+    save_img = not nosave and not source.endswith('.txt')  # save inference images
+    is_file = Path(source).suffix[1:] in (VID_FORMATS)
+    is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
+    webcam = source.isnumeric() or source.endswith('.txt') or (is_url and not is_file)
     if is_url and is_file:
         source = check_file(source)  # download
 
@@ -289,12 +269,7 @@ def run(
                         bbox_top = output[1]
                         bbox_w = output[2] - output[0]
                         bbox_h = output[3] - output[1]
-
-                        # L = 1.24
-                        # W, H = 1.2, 0.35
-                        # k = 12960
-                        # ks = 0.000020
-
+                        
                         L = parameters['L']
                         W = parameters['W']
                         H = parameters['H']
@@ -330,11 +305,11 @@ def run(
                         pts[id].append(centers)
                         cv2.circle(im0, centers[:2], 1, (0,255,0), 2)
                         # print(pts[id])
-                        dR_sum = 0
+                        dXYZ_sum = 0
                         # v_sum = 0 
                         fn_sum = 0
                         V, V_average=0, 0
-                        v_xy, v_r, v_s = 0, 0, 0
+                        v_xy, v_xyz, v_s = 0, 0, 0
                         outside = False
                         angle = 0
                         dx_sum = 0
@@ -369,13 +344,6 @@ def run(
                             
                             return distance
 
-                        # for jj in range(1, len(pts[id])):
-                        #     if jj >= len(pts[id]) - vec_len:
-                        #             vec_dx, vec_dy = pts[id][jj][0] - pts[id][jj-1][0], pts[id][jj][1] - pts[id][jj-1][1]
-                        #             dx_sum += vec_dx
-                        #             dy_sum += vec_dy
-                        # distance = get_arrow_distance(im0, pts[id], vec_len=10, color=(255, 153, 153), thickness=3, tip_length=0.3, alpha=0.5)
-
                         for jj in range(1, len(pts[id])):
                             if pts[id][jj - 1][:2] is None or pts[id][jj][:2] is None:
                                 continue
@@ -387,12 +355,12 @@ def run(
                             dx, dy, dz = ra[0]-rb[0], ra[1]-rb[1], ra[2]-rb[2]
 
                             dxy = np.sqrt(dx**2+dy**2)
-                            dr = np.sqrt(dx**2+dy**2+dz**2)
+                            dxyz = np.sqrt(dx**2+dy**2+dz**2)
                             # dR = dr * ra[3] *18
                             dX, dY, dZ = sx*dx, sy*dy, sz*dz
                             # print(f"dR=({dX}, {dY}, {dZ})")
 
-                            dR = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
+                            dXYZ = np.sqrt(dX**2 + dY**2 + dZ**2) * distance_coef
                             # dR = np.sqrt((sx*dx)**2 + (sy*dy)**2 + (sz*dz)**2)
                             # print(f"XYZ = ({sx*dx**2}, {sy*dy**2}, {sz*dz**2})")
                             fn = ra[3] - rb[3]
@@ -401,14 +369,14 @@ def run(
                             else:
                                 outside = False
 
-                            V = dR * 30 * 3.6 / fn if scale else dR * 30/ fn
+                            V = dXYZ * 30 * 3.6 / fn if scale else dXYZ * 30/ fn
                             v_xy = dxy * 30 * 3.6 / fn
-                            v_r = dr * 30 * 3.6 / fn
-                            v_s = dR * 30/ fn
-                            dR_sum += dR
+                            v_xyz = dxyz * 30 * 3.6 / fn
+                            v_s = dXYZ * 30/ fn
+                            dXYZ_sum += dXYZ
                             fn_sum += fn
 
-                            V_average = dR_sum * 30 * 3.6 / fn_sum if scale else dR_sum * 30 / fn_sum
+                            V_average = dXYZ_sum * 30 * 3.6 / fn_sum if scale else dXYZ_sum * 30 / fn_sum
                             c_color = rgb(0, 12, V) if M==50 else rgb(0,20,V)
 
                             thickness = int(np.sqrt(64 / (float(jj + 1))**0.6))
@@ -429,17 +397,15 @@ def run(
                         V_a = V / num if num > 1 else V
 
                         if save_txt:
-                            # Write MOT compliant results to file
-                            # with open(txt_path + '.txt', 'a') as f:
-                            #     f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                            #                                    bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
                             fx = round(x, 1)
                             fy = round(y, 1)
                             fz = round(z, 1)
+                            text_track_path = str(save_dir / 'tracks')
                             txt_path2 = str(save_dir / 'tracks' / 'test')
                             txt_path3 = str(save_dir / 'tracks' / 'ablation')
-                            txt_path4 = str(save_dir / 'tracks' / 'simple')
-                            txt_path5 = str(save_dir / 'tracks' / 'velocity')
+                            txt_path4 = str(save_dir / 'tracks' / 'i-id-x-y-z')
+                            txt_path5 = str(save_dir / 'tracks' / 'i-id-V')
+                            txt_path6 = str(save_dir / 'tracks' / 'i-id-v_xy')
                             
                             # fz1 = round(z1, 1)
                             with open(txt_path + '.txt', 'a') as f:
@@ -450,17 +416,17 @@ def run(
                                                                 y, fz, V, n))
                             with open(txt_path3 + '.txt', 'a') as f:
                                 f.write(('%g ' * 12 + '\n') % (frame_idx + 1, id, V_average, V, x,  # ablation
-                                                            y, fz, num, n, v_xy, v_r, v_s))
+                                                            y, fz, num, n, v_xy, v_xyz, v_s))
                             with open(txt_path4 + '.txt', 'a') as f:
                                 f.write(('%g ' * 5 + '\n') % (frame_idx + 1, id, x, y, fz))
                             with open(txt_path5 + '.txt', 'a') as f:
                                 f.write(('%g ' * 3 + '\n') % (frame_idx + 1, id, V))
+                            with open(txt_path6+ '.txt', 'a') as f:
+                                f.write(('%g ' * 3 + '\n') % (frame_idx + 1, id, v_xy))
 
                         if save_vid or save_crop or show_vid:  # Add bbox/seg to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
-                            # label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                            #     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                             color = colors(c, True)
 
                             if scale: 
@@ -583,6 +549,7 @@ def run(
     #plot
     txt_path5 = str(save_dir / 'tracks' / 'velocity')
     plot_file = txt_path5 + '.txt'
+    show = False
     # frame_idx + 1, id, V
     def plot_velocities(txt_path):
         # Load data from file
@@ -603,27 +570,82 @@ def run(
         plt.xlabel('frame_idx')
         plt.ylabel('V')
         plt.legend()
-        plt.show()
-
-    plot_velocities(plot_file)
+        plt.savefig(txt_path5 + '.pdf')
+        plt.savefig(txt_path5 + '.jpg')
+        if show:
+            plt.show(block=False)
+            time.sleep(5)
+            plt.close()
     
-    def tree(dir_path, padding=''):
-        print(padding[:-1] + '+--' + os.path.basename(dir_path) + '/')
-        padding += ' '
-        files = os.listdir(dir_path)
-        for file in files:
-            path = os.path.join(dir_path, file)
-            if os.path.isdir(path):
-                tree(path, padding + '| ')
-            else:
-                print(padding + '|--' + file)
-            
-            
-    crop_path = str(save_dir / 'crops' / 'tuna')
-    # tree(crop_path)
-    with open('tree.txt', 'w') as file:
-        tree(crop_path, file=file)
+    #plot moving average
+    import pandas as pd
+    txt_path5 = str(save_dir / 'tracks' / 'velocity')
+    plot_file = txt_path5 + '.txt'
+    # frame_idx + 1, id, V
 
+    def plot_velocities_with_ma(txt_path, window_size=5):
+        # Load data from file
+        data = pd.read_csv(txt_path, delimiter='\t', header=None, names=['frame_idx', 'id', 'V'])
+
+        # Clean data by removing non-numeric IDs
+        data['id'] = pd.to_numeric(data['id'], errors='coerce')
+        data = data.dropna(subset=['id'])
+
+        # Calculate moving average
+        data['V_MA'] = data['V'].rolling(window=window_size, center=True).mean()
+
+        # Group data by ID
+        grouped_data = data.groupby('id')
+
+        # Plot frame_idx vs V for each group (ID)
+        for id, group in grouped_data:
+            plt.plot(group['frame_idx'], group['V_MA'], label=f'ID {id}')
+
+        plt.xlabel('frame_idx')
+        plt.ylabel('V')
+        plt.legend()
+        plt.savefig(txt_path5 + '_ma.pdf')
+        plt.savefig(txt_path5 + '_ma.jpg')
+        if show:
+            plt.show(block=False)
+            time.sleep(5)
+            plt.close() 
+            
+    plot_velocities(plot_file)
+    plot_velocities_with_ma(plot_file)
+    
+    
+    def jaccard_similarity(list1, list2):
+        overlaps = 0
+        total = len(list1) + len(list2)
+        for d in list1:
+            for g in list2:
+                if (d[0] <= g[1] and d[1] >= g[0]):
+                    overlaps += 1
+                    total -= 1
+                    break
+        return overlaps / total
+
+    def simpson_similarity(list1, list2):
+        overlaps = 0
+        for d in list1:
+            for g in list2:
+                if (d[0] <= g[1] and d[1] >= g[0]):
+                    overlaps += 1
+                    break
+        return overlaps / min(len(list1), len(list2))
+
+    def dice_similarity(list1, list2):
+        overlaps = 0
+        for d in list1:
+            for g in list2:
+                if (d[0] <= g[1] and d[1] >= g[0]):
+                    overlaps += 1
+                    break
+        return (2*overlaps) / (len(list1) + len(list2))
+    
+    import seaborn as sns
+    sns.set()
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -675,8 +697,4 @@ def main(opt):
 if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
-    # txt_path5 = str(save_dir / 'tracks' / 'velocity')
-    # plot_file = txt_path5 + '.txt'
-    # # frame_idx + 1, id, V
-    # plot_velocity(plot_file)
 
