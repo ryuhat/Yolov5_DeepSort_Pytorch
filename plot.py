@@ -4,28 +4,36 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from utils import get_latest_exp_number
 
-# Command-line argument parsing
-parser = argparse.ArgumentParser(description='Plot fish movement velocity.')
-parser.add_argument('--exp', type=int, help='Experiment number', default=None)
-parser.add_argument('--track_folder', type=str, help='Track folder path', default="./runs/track")
-args = parser.parse_args()
+def plot_fish_movement_velocity(exp_number=None, track_folder="./runs/track"):
+    # Construct the file path
+    file_path = f'./runs/track/exp{exp_number}/tracks/i-id-x-y-z.txt'
 
-# Determine the experiment number
-exp_number = args.exp if args.exp is not None else get_latest_exp_number(args.track_folder)
+    # Read the text file
+    data = np.loadtxt(file_path)
 
-# Construct the file path
-file_path = f'C:/Users/ryuki/dev/yolov8_tracking/runs/track/exp{exp_number}/tracks/i-id-x-y-z.txt'
+    # Extract relevant columns
+    frame_idx = data[:, 0]
+    v_xy = data[:, 1]
 
-# Read the text file
-data = np.loadtxt(file_path)
+    # Calculate time values (t) from frame indices
+    t = frame_idx * 0.1  # Assuming each frame corresponds to 0.1 seconds
 
-# Extract relevant columns
-frame_idx = data[:, 0]
-v_xy = data[:, 1]
+    # Plot the (t, v_xy) data as a line graph
+    plt.plot(t, v_xy)
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Velocity (v_xy)')
+    plt.title(f'Fish Movement Velocity (Experiment {exp_number})')
+    plt.show()
 
-# Plot the frame index against velocity
-plt.plot(frame_idx, v_xy)
-plt.xlabel('Frame Index')
-plt.ylabel('Velocity (v_xy)')
-plt.title(f'Fish Movement Velocity (Experiment {exp_number})')
-plt.show()
+if __name__ == "__main__":
+    # Command-line argument parsing
+    parser = argparse.ArgumentParser(description='Plot fish movement velocity.')
+    parser.add_argument('--exp', type=int, help='Experiment number', default=None)
+    parser.add_argument('--track_folder', type=str, help='Track folder path', default="./runs/track")
+    args = parser.parse_args()
+
+    # Determine the experiment number
+    exp_number = args.exp if args.exp is not None else get_latest_exp_number(args.track_folder)
+
+    # Call the plot function
+    plot_fish_movement_velocity(exp_number, args.track_folder)
